@@ -29,7 +29,7 @@ async function fetchTickets() {
 }
 
 async function voltarParaAprovados(t){
-  const res = await fetch(`https://dea-rom.vercel.app/api/tickets/${t.codigo}`, { method:'DELETE' })
+  const res = await fetch(`https://dea-rom-production.up.railway.app/api/tickets/${t.codigo}`, { method:'DELETE' })
   const body = await res.json()
   if(!res.ok) throw new Error(body?.error||'Falha ao remover')
   ticketsRecusados.value = ticketsRecusados.value.filter(x=>x.codigo!==t.codigo)
