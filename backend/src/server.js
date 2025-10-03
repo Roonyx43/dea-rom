@@ -16,8 +16,7 @@ const io = new Server(server, {
       'http://localhost:5173',
       'https://dea-rom.vercel.app', // troca pelo teu domínio
     ],
-    methods: ['GET', 'POST'],
-    credentials: true,
+    methods: ['GET', 'POST']
   },
 })
 
