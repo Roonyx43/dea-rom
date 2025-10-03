@@ -1,12 +1,6 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { io } from 'socket.io-client'
 
-/**
- * endpoint: URL para snapshot inicial (ex: /api/orcamentos-hoje?dias=30)
- * eventName: nome do evento do socket (ex: 'tabelaCadastradosAtualizada')
- * mapFn: (row) => row mapeado pro seu card
- * sortFn: opcional pra manter ordem estável
- */
 export function useRealtimeList({ endpoint, eventName, mapFn, sortFn }) {
   const items = ref([])
   const loading = ref(false)
@@ -17,19 +11,21 @@ export function useRealtimeList({ endpoint, eventName, mapFn, sortFn }) {
     items.value = sortFn ? mapped.sort(sortFn) : mapped
   }
 
-  const API_BASE =
-    import.meta.env.DEV
-      ? (import.meta.env.VITE_API_URL_DEV || 'http://localhost:3000')
-      : (import.meta.env.VITE_API_URL || 'https://dea-rom-production.up.railway.app')
+  const isDev = import.meta.env.DEV
+  const API_BASE = isDev
+    ? (import.meta.env.VITE_API_URL_DEV || 'http://localhost:3000')
+    : (import.meta.env.VITE_API_URL || 'https://dea-rom-production.up.railway.app')
 
-  const SOCKET_URL = API_BASE // normalmente é o mesmo host do backend
+  // geralmente mesmo host do backend:
+  const SOCKET_URL = API_BASE
 
   const fetchOnce = async () => {
     loading.value = true
     try {
-      // se 'endpoint' vier relativo (/api/...), prefixa com API_BASE
       const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`
-      const res = await fetch(url, { credentials: 'include' })
+      const res = await fetch(url, {
+        credentials: 'include', // precisa de CORS com credentials no backend
+      })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       apply(Array.isArray(data) ? data : [])
@@ -45,12 +41,21 @@ export function useRealtimeList({ endpoint, eventName, mapFn, sortFn }) {
     if (socket) return
 
     socket = io(SOCKET_URL, {
-      path: '/socket.io',            // padrão do Socket.IO; explicitar ajuda
-      transports: ['websocket', 'polling'], // deixa fallback; só 'websocket' pode quebrar em alguns proxies
+      path: '/socket.io',         // ⚠️ sem barra no fim; igual ao server
+      // Em prod, força WS para evitar GET /socket.io/ de polling (que te deu 502).
+      transports: isDev ? ['websocket', 'polling'] : ['websocket'],
       withCredentials: true,
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,     // começa rápido
+      reconnectionDelayMax: 5000, // e limita
+      timeout: 10000,             // tempo máx. para handshakes
     })
 
-    socket.on('connect', () => console.log('[socket] conectado', socket.id))
+    socket.on('connect', () => {
+      console.log('[socket] conectado', socket.id)
+    })
     socket.on('connect_error', (err) => {
       console.error('[socket] connect_error', err?.message || err)
     })
