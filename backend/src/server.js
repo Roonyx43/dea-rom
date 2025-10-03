@@ -1,21 +1,27 @@
-// server.js — modo diagnóstico temporário
+// server.js
 require('dotenv').config();
 const http = require('http');
-const express = require('express');
-const { Server } = require('socket.io'); // <-- comenta pra testar
+const app = require('./app'); // usa o app configurado no app.js
+const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 3000;
-
-const app = express();
-app.set('trust proxy', 1);
-
-// rota de saúde ANTES de qualquer coisa
-app.get('/health', (req, res) => res.json({ ok: true }));
-
 const server = http.createServer(app);
 
-// // Socket.IO comentado no teste
-const io = new Server(server, { path: '/socket.io' });
+// Socket.IO com CORS e hardening
+const io = new Server(server, {
+  path: '/socket.io',
+  cors: { origin: ['https://dea-rom.vercel.app'], methods: ['GET','POST'] },
+  allowEIO3: false,
+  perMessageDeflate: { threshold: 1024 } // evita compressão absurda
+});
+
+// opcional: autenticar as conexões
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization;
+  if (!token) return next(new Error('unauthorized'));
+  // validar token...
+  next();
+});
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`UP na porta ${PORT}`);
