@@ -4,6 +4,8 @@ const app = express();
 app.use(express.json());
 app.use(cors())
 
+app.get('/health', (req, res) => res.json({ ok: true }));
+
 const tabelaRoutes = require('./routes/tabelaRoutes');
 app.use('/api', tabelaRoutes);
 
