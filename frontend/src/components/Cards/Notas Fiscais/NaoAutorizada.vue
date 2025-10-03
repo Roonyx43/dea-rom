@@ -12,7 +12,7 @@ function prev(d){ return fmt(d).split(' - ')[0] }
 async function fetchTickets() {
   loading.value = true
   try {
-    const res = await fetch('https://dea-rom.vercel.app/api/recusados')
+    const res = await fetch('https://dea-rom-production.up.railway.app/api/recusados')
     const dados = await res.json()
     ticketsRecusados.value = (dados||[]).map(it=>({
       codigo: it.CODORC || it.codorc || '',
