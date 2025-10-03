@@ -20,8 +20,8 @@ app.use(cors({
 app.get('/health', (req, res) => res.status(200).json({ ok: true }));
 
 // Prefixos distintos
-app.use('/api/tabelas', require('./routes/tabelaRoutes'));
-app.use('/api/tickets', require('./routes/ticketsRoutes'));
+app.use('/api', require('./routes/tabelaRoutes'));
+app.use('/api', require('./routes/ticketsRoutes'));
 
 // 404 e erro central
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
