@@ -40,7 +40,6 @@ app.set('trust proxy', 1);
 
 // Aplica CORS no Express e garante preflight
 app.use(corsMiddleware);
-app.options(/.*/, corsMiddleware);
 
 // ----- HTTP server + Socket.IO -----
 const server = http.createServer(app);
