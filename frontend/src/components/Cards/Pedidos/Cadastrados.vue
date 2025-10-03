@@ -60,7 +60,7 @@ const mapCad = (item) => {
 }
 
 const { items: ticketsCadastrados, loading } = useRealtimeList({
-  endpoint: 'http://10.0.7.99:3000/api/orcamentos-hoje?dias=30',
+  endpoint: 'https://dea-rom.vercel.app/api/orcamentos-hoje?dias=30',
   eventName: 'tabelaCadastradosAtualizada',
   mapFn: mapCad,
   sortFn: (a,b) => String(b.dataCadastro).localeCompare(String(a.dataCadastro))

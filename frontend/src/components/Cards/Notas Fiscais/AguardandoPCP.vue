@@ -12,7 +12,7 @@ function prev(d){ return fmt(d).split(' - ')[0] }
 async function fetchTickets() {
   loading.value = true
   try {
-    const res = await fetch('http://10.0.7.99:3000/api/aguardando-pcp')
+    const res = await fetch('https://dea-rom.vercel.app/api/aguardando-pcp')
     const dados = await res.json()
     ticketsPCP.value = (dados||[]).map(it=>({
       codigo: it.CODORC || it.codorc || '',
@@ -29,7 +29,7 @@ async function fetchTickets() {
 }
 
 async function voltarParaAprovados(t){
-  const res = await fetch(`http://10.0.7.99:3000/api/tickets/${t.codigo}`, { method:'DELETE' })
+  const res = await fetch(`https://dea-rom.vercel.app/api/tickets/${t.codigo}`, { method:'DELETE' })
   const body = await res.json()
   if(!res.ok) throw new Error(body?.error||'Falha ao remover')
   // remove daqui
