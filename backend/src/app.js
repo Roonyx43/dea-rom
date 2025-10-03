@@ -1,5 +1,15 @@
+// app.js
 const express = require('express');
+const cors = require('cors');
+
 const app = express();
+
+// ✅ CORS precisa vir antes das rotas
+app.use(cors({
+  origin: 'https://dea-rom.vercel.app', // seu frontend
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
 app.use(express.json());
 
