@@ -64,5 +64,4 @@ setupTabelaSocket(io);
 // Start
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor rodando na porta ${PORT}`);
-  console.log('Allowed Origins:', allowedOrigins.join(', '));
 });
