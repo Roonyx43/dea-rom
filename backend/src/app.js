@@ -9,12 +9,7 @@ app.disable('x-powered-by');
 
 app.use(helmet());
 app.use(express.json({ limit: '200kb' }));
-app.use(cors({
-  origin: 'https://dea-rom.vercel.app',
-  methods: ['GET','POST'], // mantenha só o necessário
-  allowedHeaders: ['Content-Type','Authorization'],
-  credentials: true,
-}));
+app.use(cors());
 
 // ⚠️ Healthcheck independente do DB (não chame Firebird aqui)
 app.get('/health', (req, res) => res.status(200).json({ ok: true }));
