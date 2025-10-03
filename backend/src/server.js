@@ -9,7 +9,7 @@ const PORT = 3000;
 const server = http.createServer(app);
 
 // Inicia o Socket.IO em cima do servidor HTTP
-const io = new Server(httpServer, {
+const io = new Server(server, {
   path: '/socket.io',
   cors: {
     origin: [
