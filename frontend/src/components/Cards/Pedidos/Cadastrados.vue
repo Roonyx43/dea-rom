@@ -78,8 +78,13 @@ const { items: ticketsCadastrados, loading } = useRealtimeList({
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
       </svg>
     </div>
-    <div class="space-y-2 max-h-[30rem] overflow-y-auto pr-2" style="min-height: 120px;">
-      <Tickets v-for="t in ticketsCadastrados" :key="t.codigo" :ticket="t" color="blue"/>
+
+    <!-- AQUI: mesmas classes de scrollbar do Aprovados, com polegar azul -->
+    <div
+      class="space-y-2 max-h-[30rem] overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-gray-800 pr-2"
+      style="min-height: 120px;"
+    >
+      <Tickets v-for="t in ticketsCadastrados" :key="t.codigo" :ticket="t" color="blue" />
     </div>
   </div>
 </template>

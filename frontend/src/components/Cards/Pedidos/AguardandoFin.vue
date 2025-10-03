@@ -62,7 +62,7 @@ const { items: ticketsFinanceiro, loading } = useRealtimeList({
   endpoint: 'https://dea-rom-production.up.railway.app/api/orcamentos-aguardando-financeiro?dias=30',
   eventName: 'tabelaAguardandoFinanceiroAtualizada',
   mapFn: mapFin,
-  sortFn: (a,b) => String(b.dataCadastro).localeCompare(String(a.dataCadastro))
+  sortFn: (a, b) => String(b.dataCadastro).localeCompare(String(a.dataCadastro))
 })
 </script>
 
@@ -72,13 +72,17 @@ const { items: ticketsFinanceiro, loading } = useRealtimeList({
       <h3 class="text-lg font-semibold text-orange-500">
         Aguardando Financeiro<strong class="text-white"> ({{ ticketsFinanceiro.length }})</strong>
       </h3>
-      <svg v-if="loading" class="animate-spin h-5 w-5 text-orange-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <svg v-if="loading" class="animate-spin h-5 w-5 text-orange-400" xmlns="http://www.w3.org/2000/svg" fill="none"
+        viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
       </svg>
     </div>
-    <div class="space-y-2 max-h-[30rem] overflow-y-auto pr-2" style="min-height: 120px;">
-      <Tickets v-for="t in ticketsFinanceiro" :key="t.codigo" :ticket="t" color="orange"/>
+    <div
+      class="space-y-2 max-h-[30rem] overflow-y-auto scrollbar-thin scrollbar-thumb-orange-500 scrollbar-track-gray-800 pr-2"
+      style="min-height: 120px;">
+      <Tickets v-for="t in ticketsFinanceiro" :key="t.codigo" :ticket="t" color="orange" />
     </div>
+
   </div>
 </template>
