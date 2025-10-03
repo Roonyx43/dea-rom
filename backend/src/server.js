@@ -9,11 +9,17 @@ const PORT = 3000;
 const server = http.createServer(app);
 
 // Inicia o Socket.IO em cima do servidor HTTP
-const io = new Server(server, {
+const io = new Server(httpServer, {
+  path: '/socket.io',
   cors: {
-    origin: '*', // Ajuste depois se quiser limitar
-  }
-});
+    origin: [
+      'http://localhost:5173',
+      'https://dea-rom.vercel.app', // troca pelo teu domínio
+    ],
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+})
 
 // Configura os eventos do socket
 setupTabelaSocket(io);
