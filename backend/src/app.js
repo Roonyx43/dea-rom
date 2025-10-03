@@ -4,12 +4,19 @@ const cors = require('cors');
 const helmet = require('helmet');
 
 const app = express();
-app.set('trust proxy', 1);
-app.disable('x-powered-by');
 
+const allowedOrigins = ['http://localhost:5173', 'https://dea-rom.vercel.app']
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+  })
+);
+
+app.use(express.json());
 app.use(helmet());
-app.use(express.json({ limit: '200kb' }));
-app.use(cors());
 
 // ⚠️ Healthcheck independente do DB (não chame Firebird aqui)
 app.get('/health', (req, res) => res.status(200).json({ ok: true }));
