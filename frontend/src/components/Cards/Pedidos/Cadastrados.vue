@@ -100,9 +100,9 @@ const ticketsFiltrados = computed(() => {
           v-model="filtroTipo"
           class="bg-gray-900 text-gray-100 rounded px-2 py-1 border border-gray-700"
         >
-          <option value="all">600 + 660 (todos)</option>
-          <option value="600">600 · Pedido de Venda</option>
-          <option value="660">660 · Proposta de Venda</option>
+          <option value="all">Todos</option>
+          <option value="600">Pedido de Venda</option>
+          <option value="660">Proposta de Venda</option>
         </select>
 
         <svg v-if="loading" class="animate-spin h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
