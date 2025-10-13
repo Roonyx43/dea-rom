@@ -1,4 +1,5 @@
 <script setup>
+import { ref, computed } from 'vue'
 import Tickets from '../../Ticket/Tickets.vue'
 import { useRealtimeList } from '@/composables/useRealtimeList'
 
@@ -30,8 +31,9 @@ function calcularPrevisaoEntrega(dataCadastro) {
   const d = new Date(dataCadastro)
   const dow = d.getDay()
   const h = d.getHours()
-  if (dow === 5) d.setDate(d.getDate() + (h < 16 ? 3 : 4))
-  else if (dow >= 1 && dow <= 4) {
+  if (dow === 5) {
+    d.setDate(d.getDate() + (h < 16 ? 3 : 4))
+  } else if (dow >= 1 && dow <= 4) {
     d.setDate(d.getDate() + (h < 17 ? 1 : 2))
     if (d.getDay() === 6) d.setDate(d.getDate() + 2)
     if (d.getDay() === 0) d.setDate(d.getDate() + 1)
@@ -47,6 +49,8 @@ function calcularPrevisaoEntrega(dataCadastro) {
 
 const mapCad = (item) => {
   const statusOrc = String(item.STATUSORC || '').trim().toUpperCase()
+  const tipo = Number(item.CODTIPOMOV)
+
   return {
     codigo: item.CODORC || '',
     local: item.BAIRCLI || item.LOCAL_EXIBICAO || '',
@@ -56,6 +60,12 @@ const mapCad = (item) => {
     cor: '#22d3ee',
     region: item.UFCLI || '',
     status: (statusOrc === 'OC' || statusOrc === 'OA' || statusOrc === 'CD') ? 'Cadastrado' : statusOrc,
+
+    // campos para o filtro
+    tipoMov: tipo,
+    tipoMovNome: tipo === 600
+      ? '600 · Pedido de Venda'
+      : (tipo === 660 ? '660 · Proposta de Venda' : String(item.CODTIPOMOV))
   }
 }
 
@@ -63,7 +73,17 @@ const { items: ticketsCadastrados, loading } = useRealtimeList({
   endpoint: 'https://dea-rom-production.up.railway.app/api/orcamentos-hoje?dias=30',
   eventName: 'tabelaCadastradosAtualizada',
   mapFn: mapCad,
-  sortFn: (a,b) => String(b.dataCadastro).localeCompare(String(a.dataCadastro))
+  sortFn: (a, b) => String(b.dataCadastro).localeCompare(String(a.dataCadastro))
+})
+
+// estado do filtro: 'all' | '600' | '660'
+const filtroTipo = ref('all')
+
+// lista já filtrada para render
+const ticketsFiltrados = computed(() => {
+  if (filtroTipo.value === 'all') return ticketsCadastrados.value
+  const alvo = Number(filtroTipo.value)
+  return ticketsCadastrados.value.filter(t => Number(t.tipoMov) === alvo)
 })
 </script>
 
@@ -71,20 +91,37 @@ const { items: ticketsCadastrados, loading } = useRealtimeList({
   <div class="bg-gray-800 p-5 rounded-lg border-blue-500 border">
     <div class="flex mb-4 justify-between items-center gap-2">
       <h3 class="text-lg font-semibold text-blue-500">
-        Cadastrado<strong class="text-white"> ({{ ticketsCadastrados.length }})</strong>
+        Cadastrado<strong class="text-white"> ({{ ticketsFiltrados.length }})</strong>
       </h3>
-      <svg v-if="loading" class="animate-spin h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-      </svg>
+
+      <div class="flex items-center gap-2">
+        <label class="text-gray-300 text-sm">Tipo de movimento</label>
+        <select
+          v-model="filtroTipo"
+          class="bg-gray-900 text-gray-100 rounded px-2 py-1 border border-gray-700"
+        >
+          <option value="all">600 + 660 (todos)</option>
+          <option value="600">600 · Pedido de Venda</option>
+          <option value="660">660 · Proposta de Venda</option>
+        </select>
+
+        <svg v-if="loading" class="animate-spin h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        </svg>
+      </div>
     </div>
 
-    <!-- AQUI: mesmas classes de scrollbar do Aprovados, com polegar azul -->
     <div
       class="space-y-2 max-h-[30rem] overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-gray-800 pr-2"
       style="min-height: 120px;"
     >
-      <Tickets v-for="t in ticketsCadastrados" :key="t.codigo" :ticket="t" color="blue" />
+      <Tickets
+        v-for="t in ticketsFiltrados"
+        :key="t.codigo"
+        :ticket="t"
+        color="blue"
+      />
     </div>
   </div>
 </template>
