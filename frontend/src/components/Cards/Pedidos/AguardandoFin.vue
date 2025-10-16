@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue' // ⬅️ novo
 import Tickets from '../../Ticket/Tickets.vue'
 import { useRealtimeList } from '@/composables/useRealtimeList'
 
@@ -56,6 +57,8 @@ const mapFin = (item) => ({
   status: 'Aguardando Financeiro',
   status_financeiro: 'Bloqueado',
   motivo_financeiro: item.MOTIVO_BLOQUEIO || null,
+  // ⬇️ adiciona o tipo para podermos filtrar
+  tipoMov: Number(item.CODTIPOMOV || 0),
 })
 
 const { items: ticketsFinanceiro, loading } = useRealtimeList({
@@ -64,13 +67,18 @@ const { items: ticketsFinanceiro, loading } = useRealtimeList({
   mapFn: mapFin,
   sortFn: (a, b) => String(b.dataCadastro).localeCompare(String(a.dataCadastro))
 })
+
+// ⬇️ somente 600 aqui
+const ticketsFinanceiro600 = computed(() =>
+  ticketsFinanceiro.value.filter(t => Number(t.tipoMov) === 600)
+)
 </script>
 
 <template>
   <div class="bg-gray-800 p-5 rounded-lg border border-orange-500">
     <div class="flex mb-4 justify-between items-center gap-2">
       <h3 class="text-lg font-semibold text-orange-500">
-        Aguardando Financeiro<strong class="text-white"> ({{ ticketsFinanceiro.length }})</strong>
+        Aguardando Financeiro<strong class="text-white"> ({{ ticketsFinanceiro600.length }})</strong>
       </h3>
       <svg v-if="loading" class="animate-spin h-5 w-5 text-orange-400" xmlns="http://www.w3.org/2000/svg" fill="none"
         viewBox="0 0 24 24">
@@ -78,11 +86,17 @@ const { items: ticketsFinanceiro, loading } = useRealtimeList({
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
       </svg>
     </div>
+
     <div
       class="space-y-2 max-h-[30rem] overflow-y-auto scrollbar-thin scrollbar-thumb-orange-500 scrollbar-track-gray-800 pr-2"
-      style="min-height: 120px;">
-      <Tickets v-for="t in ticketsFinanceiro" :key="t.codigo" :ticket="t" color="orange" />
+      style="min-height: 120px;"
+    >
+      <Tickets
+        v-for="t in ticketsFinanceiro600"
+        :key="t.codigo"
+        :ticket="t"
+        color="orange"
+      />
     </div>
-
   </div>
 </template>
