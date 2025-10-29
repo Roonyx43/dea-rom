@@ -1,16 +1,9 @@
-const { withDbActive } = require("../config/db");
+// controllers/tabelaController.js
+const { withDbActive } = require('../config/db');
 
-/* 1) OA/OC/CD - unificada com status financeiro (sem alterar DB) */
-function buscarOrcamentosPorDias(dias, callback) {
-  let diasNum = parseInt(dias, 10);
-  if (!Number.isFinite(diasNum) || diasNum < 0) diasNum = 0;
-
-  const filterClause = diasNum === 0
-    ? "o.DTORC >= CURRENT_DATE AND o.DTORC < CURRENT_DATE + 1"
-    : `o.DTORC >= CURRENT_DATE - ${diasNum}`;
-
-  const query = `
-    SELECT
+// 🔒 NÃO ALTERE A QUERY: deixada exatamente como você mandou
+const QUERY_ORCAMENTOS = `
+     SELECT
       o.CODEMP,
       o.CODFILIAL,
       o.CODCLI,
@@ -20,9 +13,11 @@ function buscarOrcamentosPorDias(dias, callback) {
       o.DTVENCORC,
       o.HINS,
       o.CODTIPOMOV,
-      CASE WHEN c.CIDCLI='Curitiba' THEN c.BAIRCLI
-          WHEN c.CIDCLI<>'Curitiba' AND c.UFCLI<>'PR' THEN c.UFCLI
-          ELSE c.CIDCLI END AS LOCAL_EXIBICAO,
+      CASE
+        WHEN UPPER(CAST(c.CIDCLI AS VARCHAR(60))) = 'CURITIBA' THEN c.BAIRCLI
+        WHEN UPPER(c.UFCLI) <> 'PR' THEN c.UFCLI
+        ELSE CAST(c.CIDCLI AS VARCHAR(60))
+      END AS LOCAL_EXIBICAO,
       c.BAIRCLI,
       c.IDENTIFICACAOCLI,
       c.ATIVOCLI,
@@ -48,11 +43,9 @@ function buscarOrcamentosPorDias(dias, callback) {
             SELECT 1
             FROM FNITRECEBER ir
             JOIN FNRECEBER r ON r.CODEMP=ir.CODEMP AND r.CODFILIAL=ir.CODFILIAL AND r.CODREC=ir.CODREC
-            JOIN VDCLIENTE vc ON vc.CODCLI=r.CODCLI AND vc.CODEMP=r.CODEMPCL AND vc.CODFILIAL=r.CODFILIALCL
-            WHERE vc.CODCLI=o.CODCLI AND vc.CODEMP=o.CODEMP AND vc.CODFILIAL=o.CODFILIAL
-              AND ir.CODEMP=o.CODEMP AND ir.CODFILIAL=o.CODFILIAL
+            WHERE r.CODCLI=o.CODCLI
               AND ir.STATUSITREC IN ('R1','RL','RR')
-              AND (ir.DTVENCITREC + 5) < CURRENT_DATE
+              AND ir.DTVENCITREC < CURRENT_DATE
               AND EXTRACT(WEEKDAY FROM ir.DTVENCITREC) NOT IN (5,6)
           )
           AND NOT EXISTS (
@@ -121,101 +114,52 @@ function buscarOrcamentosPorDias(dias, callback) {
     JOIN VDCLIENTE c ON c.CODEMP=o.CODEMP AND c.CODFILIAL=o.CODFILIAL AND c.CODCLI=o.CODCLI
     WHERE o.CODEMP=7
       AND o.CODFILIAL=1
-      AND o.CODTIPOMOV in (600, 660)
+      AND o.CODTIPOMOV IN (600, 660)
       AND o.STATUSORC IN ('OA','OC','CD')
-      AND ${filterClause}
-    ORDER BY o.DTORC DESC, o.HINS DESC`;
+      AND o.DTORC >= CURRENT_DATE -30
+    ORDER BY o.DTORC DESC, o.HINS DESC
+`;
 
+function buscarOrcamentosUnificadoPorDias(_ignored, cb) {
   withDbActive((err, db) => {
-    if (err) return callback(err, null);
-    db.query(query, (err, result) => {
-      db.detach();
-      if (err) return callback(err, null);
-      callback(null, result);
+    if (err) return cb(err);
+    db.query(QUERY_ORCAMENTOS, [], (e, rows) => {
+      try {
+        if (e) return cb(e);
+        return cb(null, rows || []);
+      } finally {
+        try { db.detach(); } catch (_) {}
+      }
     });
   });
 }
 
-/* 2) OL - mantida */
-function buscarOrcamentosAprovadosPorDias(dias, callback) {
-  let diasNum = parseInt(dias, 10);
-  if (!Number.isFinite(diasNum) || diasNum < 0) diasNum = 0;
-
-  const filterClause = diasNum === 0
-    ? "o.DTORC >= CURRENT_DATE AND o.DTORC < CURRENT_DATE + 1"
-    : `o.DTORC >= CURRENT_DATE - ${diasNum}`;
-
-  const query = `
-SELECT FIRST 100
-  o.CODEMP,
-  o.CODFILIAL,
-  o.CODCLI,
-  o.STATUSORC,
-  o.CODORC,
-  o.DTORC,
-  o.DTVENCORC,
-  o.HINS,
-  o.CODTIPOMOV,
-  CASE
-    WHEN m.NOMEMUNIC = 'Curitiba' THEN c.BAIRCLI
-    WHEN m.NOMEMUNIC <> 'Curitiba' AND c.SIGLAUF <> 'PR' THEN c.SIGLAUF
-    ELSE m.NOMEMUNIC
-  END AS LOCAL_EXIBICAO,
-  c.BAIRCLI,
-  c.IDENTIFICACAOCLI,
-  c.ATIVOCLI,
-  o.SITANALISECRED
-FROM VDORCAMENTO o
-INNER JOIN VDCLIENTE c
-  ON c.CODEMP = o.CODEMPCL
- AND c.CODFILIAL = o.CODFILIALCL
- AND c.CODCLI = o.CODCLI
-INNER JOIN SGMUNICIPIO m
-  ON m.CODPAIS = c.CODPAIS AND m.SIGLAUF = c.SIGLAUF AND m.CODMUNIC = c.CODMUNIC
-WHERE ${filterClause}
-  AND o.STATUSORC = 'OL'
-  AND o.CODTIPOMOV in (600)
-  AND o.CODEMP = 7
-  AND o.CODFILIAL = 1
-ORDER BY o.DTORC DESC, o.HINS DESC`;
-
-  withDbActive((err, db) => {
-    if (err) return callback(err, null);
-    db.query(query, (err, result) => {
-      db.detach();
-      if (err) return callback(err, null);
-      callback(null, result);
-    });
+// Liberados, mov. 600 ou 660
+function buscarCadastradosPorDias(_ignored, cb) {
+  buscarOrcamentosUnificadoPorDias(null, (err, rows) => {
+    if (err) return cb(err);
+    const out = (rows || []).filter(r =>
+      String(r.STATUS_CLIENTE).trim() === 'Liberado' &&
+      (Number(r.CODTIPOMOV) === 600 || Number(r.CODTIPOMOV) === 660)
+    );
+    cb(null, out);
   });
 }
 
-/* -- NOVOS WRAPPERS (substituem a antiga 3A/3B) -- */
-
-/** Aguardando Financeiro: filtra Bloqueado da unificada */
-function buscarAguardandoFinanceiroPorDias(dias, callback) {
-  buscarOrcamentosPorDias(dias, (err, rows) => {
-    if (err) return callback(err);
-    const arr = Array.isArray(rows) ? rows : [];
-    const out = arr.filter(r => String(r.STATUS_CLIENTE || '').trim().toUpperCase() === 'BLOQUEADO');
-    callback(null, out);
-  });
-}
-
-/** Cadastrados: filtra Liberado da unificada */
-function buscarCadastradosPorDias(dias, callback) {
-  buscarOrcamentosPorDias(dias, (err, rows) => {
-    if (err) return callback(err);
-    const arr = Array.isArray(rows) ? rows : [];
-    const out = arr.filter(r => String(r.STATUS_CLIENTE || '').trim().toUpperCase() === 'LIBERADO');
-    callback(null, out);
+// Bloqueados, mov. 600
+function buscarAguardandoFinanceiroPorDias(_ignored, cb) {
+  buscarOrcamentosUnificadoPorDias(null, (err, rows) => {
+    if (err) return cb(err);
+    const out = (rows || []).filter(r =>
+      String(r.STATUS_CLIENTE).trim() === 'Bloqueado' &&
+      Number(r.CODTIPOMOV) === 600
+    );
+    cb(null, out);
   });
 }
 
 module.exports = {
-  buscarOrcamentosPorDias,
-  buscarOrcamentosAprovadosPorDias,
-  buscarAguardandoFinanceiroPorDias,
+  buscarOrcamentosUnificadoPorDias,
   buscarCadastradosPorDias,
-  buscarOrcamentosAguardandoFinanceiroPorDias: buscarAguardandoFinanceiroPorDias,
+  buscarAguardandoFinanceiroPorDias,
 };
-

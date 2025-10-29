@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue' // ⬅️ novo
+import { computed } from 'vue'
 import Tickets from '../../Ticket/Tickets.vue'
 import { useRealtimeList } from '@/composables/useRealtimeList'
 
@@ -46,31 +46,38 @@ function calcularPrevisaoEntrega(dataCadastro) {
   return `${dia}/${mes}/${ano}`
 }
 
-const mapFin = (item) => ({
-  codigo: item.CODORC ?? '',
-  local: item.LOCAL_EXIBICAO || item.BAIRCLI || '',
-  dataCadastro: formatarDataHoraSeparados(item.DTORC, item.HINS),
-  previsaoEntrega: calcularPrevisaoEntrega(item.DTORC),
-  responsavel: (item.IDENTIFICACAOCLI || '').trim(),
-  cor: '#f97316',
-  region: item.UFCLI || '',
-  status: 'Aguardando Financeiro',
-  status_financeiro: 'Bloqueado',
-  motivo_financeiro: item.MOTIVO_BLOQUEIO || null,
-  // ⬇️ adiciona o tipo para podermos filtrar
-  tipoMov: Number(item.CODTIPOMOV || 0),
-})
+// mapeia direto do payload do backend unificado
+const mapFin = (item) => {
+  const statusCliente = String(item.STATUS_CLIENTE || '').trim()
+  return {
+    codigo: item.CODORC ?? '',
+    local: item.LOCAL_EXIBICAO || item.BAIRCLI || '',
+    dataCadastro: formatarDataHoraSeparados(item.DTORC, item.HINS),
+    previsaoEntrega: calcularPrevisaoEntrega(item.DTORC),
+    responsavel: (item.IDENTIFICACAOCLI || '').trim(),
+    cor: '#f97316',
+    region: item.UFCLI || '',
+    tipoMov: Number(item.CODTIPOMOV || 0),
+    statusCliente,
+    motivo_financeiro: item.MOTIVO_BLOQUEIO || null,
+    // rótulos para o card
+    status: 'Aguardando Financeiro',
+    status_financeiro: statusCliente || 'Bloqueado',
+  }
+}
 
-const { items: ticketsFinanceiro, loading } = useRealtimeList({
-  endpoint: 'https://dea-rom-production.up.railway.app/api/orcamentos-aguardando-financeiro?dias=30',
+const { items: listaBruta, loading } = useRealtimeList({
+  endpoint: 'http://localhost:3000/api/orcamentos-aguardando-financeiro?dias=30',
   eventName: 'tabelaAguardandoFinanceiroAtualizada',
   mapFn: mapFin,
-  sortFn: (a, b) => String(b.dataCadastro).localeCompare(String(a.dataCadastro))
+  sortFn: (a, b) => String(b.dataCadastro).localeCompare(String(a.dataCadastro)),
 })
 
-// ⬇️ somente 600 aqui
+// filtro final: somente bloqueados E somente 600
 const ticketsFinanceiro600 = computed(() =>
-  ticketsFinanceiro.value.filter(t => Number(t.tipoMov) === 600)
+  (listaBruta.value || []).filter(
+    (t) => t.statusCliente === 'Bloqueado' && Number(t.tipoMov) === 600
+  )
 )
 </script>
 
@@ -78,10 +85,16 @@ const ticketsFinanceiro600 = computed(() =>
   <div class="bg-gray-800 p-5 rounded-lg border border-orange-500">
     <div class="flex mb-4 justify-between items-center gap-2">
       <h3 class="text-lg font-semibold text-orange-500">
-        Aguardando Financeiro<strong class="text-white"> ({{ ticketsFinanceiro600.length }})</strong>
+        Aguardando Financeiro
+        <strong class="text-white"> ({{ ticketsFinanceiro600.length }})</strong>
       </h3>
-      <svg v-if="loading" class="animate-spin h-5 w-5 text-orange-400" xmlns="http://www.w3.org/2000/svg" fill="none"
-        viewBox="0 0 24 24">
+      <svg
+        v-if="loading"
+        class="animate-spin h-5 w-5 text-orange-400"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
       </svg>
@@ -97,6 +110,9 @@ const ticketsFinanceiro600 = computed(() =>
         :ticket="t"
         color="orange"
       />
+      <p v-if="!loading && ticketsFinanceiro600.length === 0" class="text-sm text-gray-400">
+        Nada bloqueado (600) no período.
+      </p>
     </div>
   </div>
 </template>

@@ -19,5 +19,5 @@ const io = new Server(server, {
 setupTabelaSocket(io);
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Servidor rodando em${PORT}`);
+  console.log(`Servidor rodando em ${PORT}`);
 });

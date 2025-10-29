@@ -127,14 +127,8 @@ async function fetchUnificadoOAOCCD(dias) {
   let n = parseInt(dias, 10);
   if (!Number.isFinite(n) || n < 0) n = 30;
 
-  // ⬇️ calcula cutoff (meia-noite de hoje - n dias)
-  const now = new Date();
-  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  cutoff.setDate(cutoff.getDate() - n);
-  const cutoffStr = toYMD(cutoff);
-
   const sql = `
-     SELECT
+    SELECT
       o.CODEMP,
       o.CODFILIAL,
       o.CODCLI,
@@ -144,114 +138,93 @@ async function fetchUnificadoOAOCCD(dias) {
       o.DTVENCORC,
       o.HINS,
       o.CODTIPOMOV,
-      CASE
-        WHEN UPPER(CAST(c.CIDCLI AS VARCHAR(60))) = 'CURITIBA' THEN c.BAIRCLI
-        WHEN UPPER(c.UFCLI) <> 'PR' THEN c.UFCLI
-        ELSE CAST(c.CIDCLI AS VARCHAR(60))
-      END AS LOCAL_EXIBICAO,
+      CASE WHEN c.CIDCLI='Curitiba' THEN c.BAIRCLI
+          WHEN c.CIDCLI<>'Curitiba' AND c.UFCLI<>'PR' THEN c.UFCLI
+          ELSE c.CIDCLI END AS LOCAL_EXIBICAO,
       c.BAIRCLI,
       c.IDENTIFICACAOCLI,
       c.ATIVOCLI,
       CASE
         WHEN (
-          SELECT FIRST 1 l.OPERACAO
-          FROM VDCLILIBERACAO l
-          LEFT JOIN VDORCAMENTO oo ON oo.CODEMP=l.CODEMPOC AND oo.CODFILIAL=l.CODFILIALOC AND oo.CODORC=l.CODORC AND oo.TIPOORC=l.TIPOORC
-          WHERE l.CODCLI=o.CODCLI
-            AND oo.CODEMP=o.CODEMP AND oo.CODFILIAL=o.CODFILIAL AND oo.CODORC=o.CODORC AND oo.TIPOORC='O'
-          ORDER BY l.DTALT DESC, l.HALT DESC
-        ) = 'B' THEN 'Bloqueado'
-        WHEN (
-          SELECT FIRST 1 l.OPERACAO
-          FROM VDCLILIBERACAO l
-          LEFT JOIN VDORCAMENTO oo ON oo.CODEMP=l.CODEMPOC AND oo.CODFILIAL=l.CODFILIALOC AND oo.CODORC=l.CODORC AND oo.TIPOORC=l.TIPOORC
-          WHERE l.CODCLI=o.CODCLI
-            AND oo.CODEMP=o.CODEMP AND oo.CODFILIAL=o.CODFILIAL AND oo.CODORC=o.CODORC AND oo.TIPOORC='O'
-          ORDER BY l.DTALT DESC, l.HALT DESC
-        ) = 'L' THEN 'Liberado'
-        WHEN (
           EXISTS (
             SELECT 1
-            FROM FNITRECEBER ir
-            JOIN FNRECEBER r ON r.CODEMP=ir.CODEMP AND r.CODFILIAL=ir.CODFILIAL AND r.CODREC=ir.CODREC
-            WHERE r.CODCLI=o.CODCLI
-              AND ir.STATUSITREC IN ('R1','RL','RR')
-              AND ir.DTVENCITREC < CURRENT_DATE
-              AND EXTRACT(WEEKDAY FROM ir.DTVENCITREC) NOT IN (5,6)
+            FROM fnitreceber ir
+            JOIN fnreceber r ON r.codemp=ir.codemp AND r.codfilial=ir.codfilial AND r.codrec=ir.codrec
+            JOIN vdcliente vc ON vc.codcli=r.codcli AND vc.codemp=r.codempcl AND vc.codfilial=r.codfilialcl
+            WHERE vc.codcli=o.codcli AND vc.codemp=o.codemp AND vc.codfilial=o.codfilial
+              AND ir.codemp=o.codemp AND ir.codfilial=o.codfilial
+              AND ir.statusitrec IN ('R1','RL','RR')
+              AND (ir.dtvencitrec + 5) < CURRENT_DATE
+              AND EXTRACT(WEEKDAY FROM ir.dtvencitrec) NOT IN (5,6)
           )
           AND NOT EXISTS (
             SELECT 1
-            FROM VDCLILIBERACAO l
-            LEFT JOIN VDORCAMENTO oo ON oo.CODEMP=l.CODEMPOC AND oo.CODFILIAL=l.CODFILIALOC AND oo.CODORC=l.CODORC AND oo.TIPOORC=l.TIPOORC
-            WHERE l.FUNCAO='OC' AND l.OPERACAO='L'
-              AND oo.CODEMP=o.CODEMP AND oo.CODFILIAL=o.CODFILIAL AND oo.CODORC=o.CODORC AND oo.TIPOORC='O'
+            FROM vdcliliberacao l
+            LEFT JOIN vdorcamento oo ON oo.codemp=l.codempoc AND oo.codfilial=l.codfilialoc AND oo.codorc=l.codorc AND oo.tipoorc=l.tipoorc
+            WHERE l.funcao='OC' AND l.operacao='L'
+              AND oo.codemp=o.codemp AND oo.codfilial=o.codfilial AND oo.codorc=o.codorc AND oo.tipoorc='O'
           )
         )
         OR EXISTS (
           SELECT 1
-          FROM FNRESTRICAO fr
-          JOIN FNTIPORESTR tr ON tr.CODEMP=fr.CODEMPTR AND tr.CODFILIAL=fr.CODFILIALTR AND tr.CODTPRESTR=fr.CODTPRESTR
-          WHERE fr.CODEMP=o.CODEMP AND fr.CODFILIAL=o.CODFILIAL AND fr.CODCLI=o.CODCLI
-            AND (fr.DTCANCRESTR IS NULL OR fr.DTCANCRESTR > CURRENT_DATE)
-            AND COALESCE(tr.BLOQTPRESTR,'N') IN ('S','1','T')
+          FROM fnrestricao fr
+          JOIN fntiporestr tr ON tr.codemp=fr.codemptr AND tr.codfilial=fr.codfilialtr AND tr.codtprestr=fr.codtprestr
+          WHERE fr.codemp=o.codemp AND fr.codfilial=o.codfilial AND fr.codcli=o.codcli
+            AND (fr.dtcancrestr IS NULL OR fr.dtcancrestr > CURRENT_DATE)
+            AND COALESCE(tr.bloqtprestr,'N') IN ('S','1','T')
         )
         THEN 'Bloqueado'
         ELSE 'Liberado'
       END AS STATUS_CLIENTE,
       CASE
         WHEN EXISTS (
-          SELECT 1 FROM FNRESTRICAO fr
-          JOIN FNTIPORESTR tr ON tr.CODEMP=fr.CODEMPTR AND tr.CODFILIAL=fr.CODFILIALTR AND tr.CODTPRESTR=fr.CODTPRESTR
-          WHERE fr.CODEMP=o.CODEMP AND fr.CODFILIAL=o.CODFILIAL AND fr.CODCLI=o.CODCLI
-            AND (fr.DTCANCRESTR IS NULL OR fr.DTCANCRESTR > CURRENT_DATE)
-            AND COALESCE(tr.BLOQTPRESTR,'N') IN ('S','1','T')
-        ) THEN 'Restricao ativa'
+          SELECT 1 FROM fnrestricao fr
+          JOIN fntiporestr tr ON tr.codemp=fr.codemptr AND tr.codfilial=fr.codfilialtr AND tr.codtprestr=fr.codtprestr
+          WHERE fr.codemp=o.codemp AND fr.codfilial=o.codfilial AND fr.codcli=o.codcli
+            AND (fr.dtcancrestr IS NULL OR fr.dtcancrestr > CURRENT_DATE)
+            AND COALESCE(tr.bloqtprestr,'N') IN ('S','1','T')
+        ) THEN 'Restrição ativa'
         WHEN EXISTS (
           SELECT 1
-          FROM FNITRECEBER ir
-          JOIN FNRECEBER r ON r.CODEMP=ir.CODEMP AND r.CODFILIAL=ir.CODFILIAL AND r.CODREC=ir.CODREC
-          JOIN VDCLIENTE vc ON vc.CODCLI=r.CODCLI AND vc.CODEMP=r.CODEMPCL AND vc.CODFILIAL=r.CODFILIALCL
-          WHERE vc.CODCLI=o.CODCLI AND vc.CODEMP=o.CODEMP AND vc.CODFILIAL=o.CODFILIAL
-            AND ir.CODEMP=o.CODEMP AND ir.CODFILIAL=o.CODFILIAL
-            AND ir.STATUSITREC IN ('R1','RL','RR')
-            AND (ir.DTVENCITREC + 5) < CURRENT_DATE
-            AND EXTRACT(WEEKDAY FROM ir.DTVENCITREC) NOT IN (5,6)
+          FROM fnitreceber ir
+          JOIN fnreceber r ON r.codemp=ir.codemp AND r.codfilial=ir.codfilial AND r.codrec=ir.codrec
+          JOIN vdcliente vc ON vc.codcli=r.codcli AND vc.codemp=r.codempcl AND vc.codfilial=r.codfilialcl
+          WHERE vc.codcli=o.codcli AND vc.codemp=o.codemp AND vc.codfilial=o.codfilial
+            AND ir.codemp=o.codemp AND ir.codfilial=o.codfilial
+            AND ir.statusitrec IN ('R1','RL','RR')
+            AND (ir.dtvencitrec + 5) < CURRENT_DATE
+            AND EXTRACT(WEEKDAY FROM ir.dtvencitrec) NOT IN (5,6)
         )
         AND NOT EXISTS (
           SELECT 1
-          FROM VDCLILIBERACAO l
-          LEFT JOIN VDORCAMENTO oo ON oo.CODEMP=l.CODEMPOC AND oo.CODFILIAL=l.CODFILIALOC AND oo.CODORC=l.CODORC AND oo.TIPOORC=l.TIPOORC
-          WHERE l.FUNCAO='OC' AND l.OPERACAO='L'
-            AND oo.CODEMP=o.CODEMP AND oo.CODFILIAL=o.CODFILIAL AND oo.CODORC=o.CODORC AND oo.TIPOORC='O'
-        ) THEN 'Titulos vencidos sem liberacao'
+          FROM vdcliliberacao l
+          LEFT JOIN vdorcamento oo ON oo.codemp=l.codempoc AND oo.codfilial=l.codfilialoc AND oo.codorc=l.codorc AND oo.tipoorc=l.tipoorc
+          WHERE l.funcao='OC' AND l.operacao='L'
+            AND oo.codemp=o.codemp AND oo.codfilial=o.codfilial AND oo.codorc=o.codorc AND oo.tipoorc='O'
+        ) THEN 'Títulos vencidos sem liberação'
         ELSE (
           SELECT FIRST 1 l.MOTIVO
           FROM VDCLILIBERACAO l
-          LEFT JOIN VDORCAMENTO oo ON oo.CODEMP=l.CODEMPOC AND oo.CODFILIAL=l.CODFILIALOC AND oo.CODORC=l.CODORC AND oo.TIPOORC=l.TIPOORC
+          LEFT JOIN VDORCAMENTO oo ON oo.codemp=l.codempoc AND oo.codfilial=l.codfilialoc AND oo.codorc=l.codorc AND oo.tipoorc=l.tipoorc
           WHERE l.CODCLI=o.CODCLI
-            AND oo.CODEMP=o.CODEMP AND oo.CODFILIAL=o.CODFILIAL AND oo.CODORC=o.CODORC AND oo.TIPOORC='O'
+            AND oo.codemp=o.codemp AND oo.codfilial=o.codfilial AND oo.codorc=o.codorc AND oo.tipoorc='O'
           ORDER BY l.DTALT DESC, l.HALT DESC
         )
-      END AS MOTIVO_BLOQUEIO,
+      END AS MOTIVO_EXIBICAO,
       (
         SELECT FIRST 1 l.DTALT
         FROM VDCLILIBERACAO l
-        LEFT JOIN VDORCAMENTO oo ON oo.CODEMP=l.CODEMPOC AND oo.CODFILIAL=l.CODFILIALOC AND oo.CODORC=l.CODORC AND oo.TIPOORC=l.TIPOORC
+        LEFT JOIN VDORCAMENTO oo ON oo.codemp=l.codempoc AND oo.codfilial=l.codfilialoc AND oo.codorc=l.codorc AND oo.tipoorc=l.tipoorc
         WHERE l.CODCLI=o.CODCLI
-          AND oo.CODEMP=o.CODEMP AND oo.CODFILIAL=o.CODFILIAL AND oo.CODORC=o.CODORC AND oo.TIPOORC='O'
+          AND oo.codemp=o.codemp AND oo.codfilial=o.codfilial AND oo.codorc=o.codorc AND oo.tipoorc='O'
         ORDER BY l.DTALT DESC, l.HALT DESC
-      ) AS DTALT_BLOQUEIO
+      ) AS DTALT_ULT_LIB
     FROM VDORCAMENTO o
     JOIN VDCLIENTE c ON c.CODEMP=o.CODEMP AND c.CODFILIAL=o.CODFILIAL AND c.CODCLI=o.CODCLI
-    WHERE o.CODEMP=7
-      AND o.CODFILIAL=1
-      AND o.CODTIPOMOV IN (600, 660)
-      AND o.STATUSORC IN ('OA','OC','CD')
-      AND o.DTORC >= ?
-    ORDER BY o.DTORC DESC, o.HINS DESC
-  `;
+    WHERE o.CODEMP=7 AND o.CODFILIAL=1 AND o.CODTIPOMOV=600 AND o.STATUSORC IN ('OA','OC','CD') AND o.DTORC >= CURRENT_DATE - ?
+    ORDER BY o.DTORC DESC, o.HINS DESC`;
 
-  return fbQuery(sql, [cutoffStr]);
+  return fbQuery(sql, [n]);
 }
 
 async function listarAguardandoPCP(cb) {

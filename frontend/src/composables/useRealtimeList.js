@@ -11,20 +11,30 @@ export function useRealtimeList({ endpoint, eventName, mapFn, sortFn }) {
     items.value = sortFn ? mapped.sort(sortFn) : mapped
   }
 
-  const isDev = import.meta.env.DEV
-  const API_BASE = isDev
-    ? (import.meta.env.VITE_API_URL_DEV || 'http://localhost:3000')
-    : (import.meta.env.VITE_API_URL || 'https://dea-rom-production.up.railway.app')
-
-  // geralmente mesmo host do backend:
+  // 🔒 Força localhost SEMPRE
+  const API_BASE = 'http://localhost:3000'
   const SOCKET_URL = API_BASE
+
+  // Normaliza o endpoint para virar apenas o path
+  // (se vier absoluto, pegamos só o pathname; se vier relativo, usamos como está)
+  const toLocalUrl = (ep) => {
+    try {
+      if (ep.startsWith('http')) {
+        const u = new URL(ep)
+        return `${API_BASE}${u.pathname}${u.search || ''}`
+      }
+    } catch (_) {}
+    // garante a barra inicial
+    const path = ep.startsWith('/') ? ep : `/${ep}`
+    return `${API_BASE}${path}`
+  }
 
   const fetchOnce = async () => {
     loading.value = true
     try {
-      const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`
+      const url = toLocalUrl(endpoint)
       const res = await fetch(url, {
-        credentials: 'include', // precisa de CORS com credentials no backend
+        credentials: 'include', // mantenho; se não precisar cookies, pode remover
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
@@ -41,16 +51,15 @@ export function useRealtimeList({ endpoint, eventName, mapFn, sortFn }) {
     if (socket) return
 
     socket = io(SOCKET_URL, {
-      path: '/socket.io',         // ⚠️ sem barra no fim; igual ao server
-      // Em prod, força WS para evitar GET /socket.io/ de polling (que te deu 502).
-      transports: isDev ? ['websocket', 'polling'] : ['websocket'],
+      path: '/socket.io',
+      transports: ['websocket'], // já que é local, dá pra manter só WS
       withCredentials: true,
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 500,     // começa rápido
-      reconnectionDelayMax: 5000, // e limita
-      timeout: 10000,             // tempo máx. para handshakes
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
     })
 
     socket.on('connect', () => {

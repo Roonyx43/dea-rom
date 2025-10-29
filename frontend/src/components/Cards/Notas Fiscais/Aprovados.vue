@@ -12,7 +12,7 @@ function prev(d){ return fmt(d).split(' - ')[0] }
 async function fetchTickets() {
   loading.value = true
   try {
-    const res = await fetch('https://dea-rom-production.up.railway.app/api/aprovados?dias=30')
+    const res = await fetch('http://localhost:3000/api/aprovados?dias=30')
     const dados = await res.json()
     ticketsAprovados.value = (dados || []).map(it => ({
       codigo: it.CODORC || '',
@@ -29,7 +29,7 @@ async function fetchTickets() {
 }
 
 async function mover(ticket, status, motivo=null){
-  const res = await fetch(`https://dea-rom-production.up.railway.app/api/tickets/${ticket.codigo}/status`, {
+  const res = await fetch(`http://localhost:3000/api/tickets/${ticket.codigo}/status`, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ status, username:'lofs', motivo })

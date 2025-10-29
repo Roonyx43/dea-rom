@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import Tickets from '../../Ticket/Tickets.vue'
 import { useRealtimeList } from '@/composables/useRealtimeList'
 
+/** ===== helpers de data ===== */
 function formatarDataHoraSeparados(dataBruta, horaBruta) {
   if (!dataBruta) return ''
   let hora = '00:00:00'
@@ -15,7 +16,7 @@ function formatarDataHoraSeparados(dataBruta, horaBruta) {
       hora = `${hh}:${mm}:${ss}`
     }
   }
-  const dataCompleta = `${dataBruta.substring(0, 10)}T${hora}`
+  const dataCompleta = `${String(dataBruta).substring(0, 10)}T${hora}`
   const d = new Date(dataCompleta)
   if (isNaN(d.getTime())) return ''
   const dia = String(d.getDate()).padStart(2, '0')
@@ -47,6 +48,7 @@ function calcularPrevisaoEntrega(dataCadastro) {
   return `${dia}/${mes}/${ano}`
 }
 
+/** ===== mapeamentos ===== */
 const mapCad = (item) => {
   const statusOrc = String(item.STATUSORC || '').trim().toUpperCase()
   const tipo = Number(item.CODTIPOMOV)
@@ -56,35 +58,59 @@ const mapCad = (item) => {
     local: item.BAIRCLI || item.LOCAL_EXIBICAO || '',
     dataCadastro: formatarDataHoraSeparados(item.DTORC, item.HINS) || '',
     previsaoEntrega: calcularPrevisaoEntrega(item.DTORC) || '',
-    responsavel: item.IDENTIFICACAOCLI || '',
+    responsavel: (item.IDENTIFICACAOCLI || '').trim(),
     cor: '#22d3ee',
     region: item.UFCLI || '',
+    // No card de cadastrados exibimos "Cadastrado" para OA/OC/CD
     status: (statusOrc === 'OC' || statusOrc === 'OA' || statusOrc === 'CD') ? 'Cadastrado' : statusOrc,
-
-    // campos para o filtro
+    // filtros
     tipoMov: tipo,
     tipoMovNome: tipo === 600
       ? '600 · Pedido de Venda'
-      : (tipo === 660 ? '660 · Proposta de Venda' : String(item.CODTIPOMOV))
+      : (tipo === 660 ? '660 · Proposta de Venda' : String(item.CODTIPOMOV)),
   }
 }
 
-const { items: ticketsCadastrados, loading } = useRealtimeList({
-  endpoint: 'https://dea-rom-production.up.railway.app/api/orcamentos-hoje?dias=30',
+// Financeiro: basta o CODORC e tipoMov pra identificarmos bloqueados
+const mapFin = (item) => ({
+  codigo: item.CODORC ?? '',
+  tipoMov: Number(item.CODTIPOMOV || 0),
+})
+
+/** ===== dados em tempo real ===== */
+const { items: ticketsCadastrados, loading: loadingCad } = useRealtimeList({
+  endpoint: 'http://localhost:3000/api/orcamentos-hoje?dias=30',
   eventName: 'tabelaCadastradosAtualizada',
   mapFn: mapCad,
-  sortFn: (a, b) => String(b.dataCadastro).localeCompare(String(a.dataCadastro))
+  sortFn: (a, b) => String(b.dataCadastro).localeCompare(String(a.dataCadastro)),
 })
 
-// estado do filtro: 'all' | '600' | '660'
-const filtroTipo = ref('all')
+// puxa TODOS os bloqueados (600 e 660). Não filtre aqui, deixe o card do Financeiro decidir a vitrine.
+const { items: ticketsFinanceiroAll, loading: loadingFin } = useRealtimeList({
+  endpoint: 'http://localhost:3000/api/orcamentos-aguardando-financeiro?dias=30',
+  eventName: 'tabelaAguardandoFinanceiroAtualizada',
+  mapFn: mapFin,
+})
 
-// lista já filtrada para render
+/** ===== filtro cruzado: removendo bloqueados do "Cadastrado" ===== */
+const bloqueadosSet = computed(() => new Set(
+  ticketsFinanceiroAll.value.map(t => String(t.codigo))
+))
+
+const cadastradosLiberados = computed(() =>
+  ticketsCadastrados.value.filter(t => !bloqueadosSet.value.has(String(t.codigo)))
+)
+
+/** ===== filtro por tipo (UI) ===== */
+const filtroTipo = ref('all') // 'all' | '600' | '660'
+
 const ticketsFiltrados = computed(() => {
-  if (filtroTipo.value === 'all') return ticketsCadastrados.value
+  if (filtroTipo.value === 'all') return cadastradosLiberados.value
   const alvo = Number(filtroTipo.value)
-  return ticketsCadastrados.value.filter(t => Number(t.tipoMov) === alvo)
+  return cadastradosLiberados.value.filter(t => Number(t.tipoMov) === alvo)
 })
+
+const loading = computed(() => loadingCad.value || loadingFin.value)
 </script>
 
 <template>
