@@ -3,7 +3,7 @@ const app = require('./app');
 const { Server } = require('socket.io');
 const { setupTabelaSocket } = require('./middlewares/tabelaSocket');
 
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3000;
 
 // Cria o servidor HTTP com Express
 const server = http.createServer(app);

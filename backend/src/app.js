@@ -10,7 +10,7 @@ app.disable('x-powered-by');
 app.use(helmet());
 app.use(express.json({ limit: '200kb' }));
 app.use(cors({
-  origin: 'https://dea-rom.vercel.app',
+  origin: ['https://dea-rom.vercel.app', 'http://localhost:5173'],
   methods: ['GET','POST'], // mantenha só o necessário
   allowedHeaders: ['Content-Type','Authorization'],
   credentials: true,
