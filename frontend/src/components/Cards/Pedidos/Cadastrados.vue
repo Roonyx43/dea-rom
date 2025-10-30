@@ -79,7 +79,7 @@ const mapFin = (item) => ({
 
 /** ===== dados em tempo real ===== */
 const { items: ticketsCadastrados, loading: loadingCad } = useRealtimeList({
-  endpoint: 'http://localhost:3000/api/orcamentos-hoje?dias=30',
+  endpoint: 'https://dea-rom-production.up.railway.app/api/orcamentos-hoje?dias=30',
   eventName: 'tabelaCadastradosAtualizada',
   mapFn: mapCad,
   sortFn: (a, b) => String(b.dataCadastro).localeCompare(String(a.dataCadastro)),
@@ -87,7 +87,7 @@ const { items: ticketsCadastrados, loading: loadingCad } = useRealtimeList({
 
 // puxa TODOS os bloqueados (600 e 660). Não filtre aqui, deixe o card do Financeiro decidir a vitrine.
 const { items: ticketsFinanceiroAll, loading: loadingFin } = useRealtimeList({
-  endpoint: 'http://localhost:3000/api/orcamentos-aguardando-financeiro?dias=30',
+  endpoint: 'https://dea-rom-production.up.railway.app/api/orcamentos-aguardando-financeiro?dias=30',
   eventName: 'tabelaAguardandoFinanceiroAtualizada',
   mapFn: mapFin,
 })
