@@ -6,16 +6,46 @@ import { triggerTicketsReload, listenTicketsReload } from '../../../composables/
 const ticketsAprovados = ref([])
 const loading = ref(false)
 
-function fmt(d,h){ if(!d) return ''; const D=new Date(`${d.substring(0,10)}T${h?new Date(h).toTimeString().slice(0,8):'00:00:00'}`); if(isNaN(D))return''; const dd=String(D.getDate()).padStart(2,'0'); const mm=String(D.getMonth()+1).padStart(2,'0'); const yyyy=D.getFullYear(); const hh=String(D.getHours()).padStart(2,'0'); const mi=String(D.getMinutes()).padStart(2,'0'); return `${dd}/${mm}/${yyyy} - ${hh}:${mi}` }
-function prev(d){ return fmt(d).split(' - ')[0] }
+// modal de itens
+const showItensModal = ref(false)
+const itensLoading = ref(false)
+const itensErro = ref('')
+const itensOrcamento = ref([])
+const ticketSelecionado = ref(null)
+
+const API_BASE = 'https://dea-rom-production.up.railway.app'
+
+function fmt(d, h) {
+  if (!d) return ''
+  const D = new Date(`${d.substring(0, 10)}T${h ? new Date(h).toTimeString().slice(0, 8) : '00:00:00'}`)
+  if (isNaN(D)) return ''
+  const dd = String(D.getDate()).padStart(2, '0')
+  const mm = String(D.getMonth() + 1).padStart(2, '0')
+  const yyyy = D.getFullYear()
+  const hh = String(D.getHours()).padStart(2, '0')
+  const mi = String(D.getMinutes()).padStart(2, '0')
+  return `${dd}/${mm}/${yyyy} - ${hh}:${mi}`
+}
+
+function prev(d) {
+  return fmt(d).split(' - ')[0]
+}
 
 async function fetchTickets() {
   loading.value = true
   try {
-    const res = await fetch('https://dea-rom-production.up.railway.app/api/aprovados?dias=30')
+    const res = await fetch(`${API_BASE}/api/tickets/aprovados?dias=30`)
     const dados = await res.json()
+
+    // se backend responder erro, evita quebrar
+    if (!res.ok) {
+      console.error('Erro ao buscar aprovados:', dados)
+      ticketsAprovados.value = []
+      return
+    }
+
     ticketsAprovados.value = (dados || []).map(it => ({
-      codigo: it.CODORC || '',
+      codigo: it.CODORC || it.codorc || '',
       local: it.LOCAL_EXIBICAO || '',
       dataCadastro: fmt(it.DTORC, it.HINS),
       previsaoEntrega: prev(it.DTORC),
@@ -25,26 +55,63 @@ async function fetchTickets() {
       status: 'Aprovado',
       dias: Number(it.DIAS_STATUS ?? 0),
     }))
-  } finally { loading.value = false }
+  } finally {
+    loading.value = false
+  }
 }
 
-async function mover(ticket, status, motivo=null){
-  const res = await fetch(`https://dea-rom-production.up.railway.app/api/tickets/${ticket.codigo}/status`, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ status, username:'lofs', motivo })
-  })
-  const body = await res.json()
-  if(!res.ok) throw new Error(body?.error||'Falha ao mover')
-  // remove local
-  ticketsAprovados.value = ticketsAprovados.value.filter(t=>t.codigo!==ticket.codigo)
-  // manda recarregar o card alvo
-  if (status === 'AGUARDANDO_PCP') triggerTicketsReload('pcp')
-  if (status === 'RECUSADO') triggerTicketsReload('recusados')
+// abre o modal de itens e busca no backend
+async function abrirItens(ticket) {
+  ticketSelecionado.value = ticket
+  showItensModal.value = true
+  itensLoading.value = true
+  itensErro.value = ''
+  itensOrcamento.value = []
+
+  try {
+    const res = await fetch(`${API_BASE}/api/estoque/${ticket.codigo}/itens`)
+    const dados = await res.json()
+
+    if (!res.ok) {
+      console.error('Erro ao buscar itens do orçamento:', dados)
+      itensErro.value = dados?.error || 'Erro ao buscar itens do orçamento'
+      return
+    }
+
+    itensOrcamento.value = (dados || []).map(it => {
+      const qtdSolicitada = Number(it.qtdSolicitada ?? it.QTDITORC ?? 0)
+      const saldoAtual = Number(it.saldoAtual ?? it.SLDPROD ?? 0)
+      const saldoDepois =
+        it.saldoDepois !== undefined
+          ? Number(it.saldoDepois)
+          : saldoAtual - qtdSolicitada
+
+      return {
+        codProd: it.codProd || it.CODPROD,
+        descProd: it.descProd || it.DESCPROD,
+        qtdSolicitada,
+        saldoAtual,
+        saldoDepois,
+        estoqueInsuficiente:
+          it.estoqueInsuficiente !== undefined
+            ? Boolean(it.estoqueInsuficiente)
+            : saldoDepois < 0,
+      }
+    })
+  } catch (err) {
+    console.error('Erro inesperado ao buscar itens:', err)
+    itensErro.value = 'Erro ao buscar itens do orçamento'
+  } finally {
+    itensLoading.value = false
+  }
 }
 
-function moverParaPCP(t){ return mover(t,'AGUARDANDO_PCP') }
-function recusar(t){ const m = prompt('Motivo da recusa?') || ''; return mover(t,'RECUSADO', m) }
+function fecharModalItens() {
+  showItensModal.value = false
+  itensOrcamento.value = []
+  ticketSelecionado.value = null
+  itensErro.value = ''
+}
 
 let unsubscribe
 onMounted(() => {
@@ -52,7 +119,9 @@ onMounted(() => {
   // se alguém voltar de PCP/Recusados -> recarrega Aprovados
   unsubscribe = listenTicketsReload(['aprovados'], () => fetchTickets())
 })
-onBeforeUnmount(() => { unsubscribe?.() })
+onBeforeUnmount(() => {
+  unsubscribe?.()
+})
 </script>
 
 <template>
@@ -61,9 +130,24 @@ onBeforeUnmount(() => { unsubscribe?.() })
       <h3 class="text-lg font-semibold text-yellow-500">
         Aprovados<strong class="text-white"> ({{ ticketsAprovados.length }})</strong>
       </h3>
-      <svg v-if="loading" class="animate-spin h-5 w-5 text-yellow-400" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+      <svg
+        v-if="loading"
+        class="animate-spin h-5 w-5 text-yellow-400"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          class="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          stroke-width="4"
+        />
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+        />
       </svg>
     </div>
 
@@ -80,12 +164,147 @@ onBeforeUnmount(() => { unsubscribe?.() })
         daysPrefix="Aprovado"
       >
         <template #actions>
-          <button class="px-3 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white text-xs" @click="moverParaPCP(t)">PCP</button>
-          <button class="px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs" @click="recusar(t)">Recusar</button>
+          <button
+            class="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs"
+            @click="abrirItens(t)"
+          >
+            Itens
+          </button>
         </template>
       </Tickets>
+    </div>
 
-      
+    <!-- Modal de itens do orçamento -->
+    <div
+      v-if="showItensModal"
+      class="fixed inset-0 z-40 flex items-center justify-center bg-black/60"
+    >
+      <div
+        class="bg-gray-900 border border-yellow-500 rounded-lg shadow-xl max-w-3xl w-full mx-4"
+      >
+        <div class="flex items-center justify-between border-b border-gray-700 px-4 py-3">
+          <div>
+            <h2 class="text-lg font-semibold text-yellow-400">
+              Itens do orçamento
+              <span v-if="ticketSelecionado" class="text-white">
+                #{{ ticketSelecionado.codigo }}
+              </span>
+            </h2>
+            <p v-if="ticketSelecionado" class="text-xs text-gray-400">
+              Cliente: {{ ticketSelecionado.responsavel }} · Local: {{ ticketSelecionado.local }}
+            </p>
+          </div>
+          <button
+            class="text-gray-400 hover:text-white text-xl leading-none px-2"
+            @click="fecharModalItens"
+            aria-label="Fechar"
+          >
+            ×
+          </button>
+        </div>
+
+        <div class="p-4 space-y-3">
+          <!-- loading dos itens -->
+          <div v-if="itensLoading" class="flex items-center gap-2 text-yellow-300 text-sm">
+            <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              />
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+              />
+            </svg>
+            Carregando itens do orçamento...
+          </div>
+
+          <!-- erro -->
+          <div
+            v-else-if="itensErro"
+            class="text-sm text-red-400 bg-red-950/40 border border-red-700 rounded px-3 py-2"
+          >
+            {{ itensErro }}
+          </div>
+
+          <!-- tabela -->
+          <div v-else>
+            <div
+              v-if="itensOrcamento.length === 0"
+              class="text-sm text-gray-400"
+            >
+              Nenhum item encontrado para este orçamento.
+            </div>
+
+            <div
+              v-else
+              class="overflow-x-auto max-h-[20rem] border border-gray-700 rounded"
+            >
+              <table class="min-w-full text-xs md:text-sm text-left text-gray-200">
+                <thead class="bg-gray-800 sticky top-0 z-10">
+                  <tr>
+                    <th class="px-3 py-2 font-medium">Cód. Produto</th>
+                    <th class="px-3 py-2 font-medium">Descrição</th>
+                    <th class="px-3 py-2 font-medium text-right">Saldo atual</th>
+                    <th class="px-3 py-2 font-medium text-right">Solicitado</th>
+                    <th class="px-3 py-2 font-medium text-right">Saldo depois</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="item in itensOrcamento"
+                    :key="item.codProd"
+                    :class="item.estoqueInsuficiente ? 'bg-red-950/40' : 'bg-gray-900'"
+                  >
+                    <td class="px-3 py-2 align-top">
+                      <span class="font-mono text-xs">
+                        {{ item.codProd }}
+                      </span>
+                    </td>
+                    <td class="px-3 py-2 align-top">
+                      {{ item.descProd }}
+                    </td>
+                    <td class="px-3 py-2 text-right align-top">
+                      {{ item.saldoAtual }}
+                    </td>
+                    <td class="px-3 py-2 text-right align-top">
+                      {{ item.qtdSolicitada }}
+                    </td>
+                    <td
+                      class="px-3 py-2 text-right align-top"
+                      :class="item.estoqueInsuficiente ? 'text-red-300 font-semibold' : ''"
+                    >
+                      {{ item.saldoDepois }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <p
+              v-if="itensOrcamento.some(i => i.estoqueInsuficiente)"
+              class="mt-2 text-xs text-red-300"
+            >
+              Existem itens com estoque insuficiente. Depois a gente pluga aqui a lógica para
+              enviar o orçamento para "Aguardando PCP".
+            </p>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 border-t border-gray-800 px-4 py-3">
+          <button
+            class="px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm text-gray-100"
+            @click="fecharModalItens"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>

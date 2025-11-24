@@ -12,7 +12,7 @@ function prev(d) { return fmt(d).split(' - ')[0] }
 async function fetchTickets() {
   loading.value = true
   try {
-    const res = await fetch('https://dea-rom-production.up.railway.app/api/aguardando-pcp')
+    const res = await fetch('https://dea-rom-production.up.railway.app/api/tickets/aguardando-pcp')
     const dados = await res.json()
     ticketsPCP.value = (dados || []).map(it => ({
       codigo: it.CODORC || it.codorc || '',
@@ -29,14 +29,31 @@ async function fetchTickets() {
 }
 
 async function voltarParaAprovados(t) {
-  const res = await fetch(`https://dea-rom-production.up.railway.app/api/tickets/${t.codigo}`, { method: 'DELETE' })
+  // aqui você precisa usar o status que o backend considera como "aprovado"
+  // estou assumindo 'APROVADO', mas ajusta se no backend for outro nome
+  const res = await fetch(`https://dea-rom-production.up.railway.app/api/tickets/${t.codigo}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      status: 'APROVADO',   // <-- CONFERE ESSE NOME NO BACKEND
+      username: 'lofs',
+      motivo: null
+    })
+  })
+
   const body = await res.json()
-  if (!res.ok) throw new Error(body?.error || 'Falha ao remover')
-  // remove daqui
+  if (!res.ok) {
+    console.error('Erro ao voltar para aprovados:', body)
+    throw new Error(body?.error || 'Falha ao mover para Aprovados')
+  }
+
+  // remove do card PCP
   ticketsPCP.value = ticketsPCP.value.filter(x => x.codigo !== t.codigo)
+
   // manda recarregar Aprovados
   triggerTicketsReload('aprovados')
 }
+
 
 let unsubscribe
 onMounted(() => {

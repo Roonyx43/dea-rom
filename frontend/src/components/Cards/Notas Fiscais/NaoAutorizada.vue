@@ -12,7 +12,7 @@ function prev(d) { return fmt(d).split(' - ')[0] }
 async function fetchTickets() {
   loading.value = true
   try {
-    const res = await fetch('http://localhost:3000/api/recusados')
+    const res = await fetch('http://localhost:3000/api/tickets/recusados')
     const dados = await res.json()
     ticketsRecusados.value = (dados || []).map(it => ({
       codigo: it.CODORC || it.codorc || '',
@@ -29,11 +29,26 @@ async function fetchTickets() {
 }
 
 async function voltarParaAprovados(t) {
-  const res = await fetch(`https://dea-rom-production.up.railway.app/api/tickets/${t.codigo}`, { method: 'DELETE' })
+  const res = await fetch(`https://dea-rom-production.up.railway.app/api/tickets/${t.codigo}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      status: 'APROVADO',   // <– CONFERE esse nome com o backend
+      username: 'lofs',
+      motivo: null
+    })
+  })
+
   const body = await res.json()
-  if (!res.ok) throw new Error(body?.error || 'Falha ao remover')
+  if (!res.ok) {
+    console.error('Erro ao voltar recusado para aprovados:', body)
+    throw new Error(body?.error || 'Falha ao mover para Aprovados')
+  }
+
+  // some localmente
   ticketsRecusados.value = ticketsRecusados.value.filter(x => x.codigo !== t.codigo)
-  // manda recarregar Aprovados
+
+  // manda recarregar aprovados
   triggerTicketsReload('aprovados')
 }
 

@@ -22,6 +22,7 @@ app.get('/health', (req, res) => res.status(200).json({ ok: true }));
 // Prefixos distintos
 app.use('/api/tickets', require('./routes/ticketsRoutes'))
 app.use('/api/tabela',  require('./routes/tabelaRoutes'))
+app.use('/api/estoque', require('./routes/estoqueRoutes'))
 
 // 404 e erro central
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
