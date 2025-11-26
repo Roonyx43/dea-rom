@@ -12,7 +12,7 @@ export function useRealtimeList({ endpoint, eventName, mapFn, sortFn }) {
   }
 
   // 🔒 Força localhost SEMPRE
-  const API_BASE = 'https://dea-rom-production.up.railway.app/'
+  const API_BASE = 'https://dea-rom-production.up.railway.app'
   const SOCKET_URL = API_BASE
 
   // Normaliza o endpoint para virar apenas o path
