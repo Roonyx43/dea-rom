@@ -73,6 +73,61 @@ async function fetchAprovadosBaseFB(dias) {
   return fbQuery(sql, [cutoffStr]);
 }
 
+async function fetchItensPorOrcamentosFB(codorcs) {
+  if (!Array.isArray(codorcs) || codorcs.length === 0) return new Map()
+
+  // monta "?, ?, ?, ?" baseado no tamanho do array
+  const placeholders = codorcs.map(() => '?').join(',')
+
+  const sql = `
+    SELECT 
+      o.CODEMP, 
+      o.CODFILIAL, 
+      o.CODORC, 
+      o.CODPROD, 
+      o.QTDITORC, 
+      e.DESCPROD, 
+      e.SLDPROD
+    FROM VDITORCAMENTO o
+    INNER JOIN EQPRODUTO e 
+      ON e.CODEMP    = o.CODEMP 
+     AND e.CODFILIAL = o.CODFILIAL 
+     AND e.CODPROD   = o.CODPROD
+    WHERE o.CODORC IN (${placeholders})
+  `
+
+  const rows = await fbQuery(sql, codorcs)
+
+  // Mapa: codorc -> [itens...]
+  const map = new Map()
+
+  for (const r of rows || []) {
+    const qtdSolicitada = Number(r.QTDITORC ?? 0)
+    const saldoAtual = Number(r.SLDPROD ?? 0)
+    const saldoDepois = saldoAtual - qtdSolicitada
+
+    const item = {
+      codEmp: r.CODEMP,
+      codFilial: r.CODFILIAL,
+      codOrc: r.CODORC,
+      codProd: r.CODPROD,
+      descProd: r.DESCPROD,
+      qtdSolicitada,
+      saldoAtual,
+      saldoDepois,
+      estoqueInsuficiente: saldoDepois < 0,
+    }
+
+    if (!map.has(r.CODORC)) {
+      map.set(r.CODORC, [])
+    }
+    map.get(r.CODORC).push(item)
+  }
+
+  return map
+}
+
+
 async function fetchTDByCodorcsMy(codorcs) {
   if (!Array.isArray(codorcs) || codorcs.length === 0) return [];
   const [rows] = await pool.query(
@@ -84,25 +139,41 @@ async function fetchTDByCodorcsMy(codorcs) {
 
 function listarAprovados(dias, cb) {
   (async () => {
-    const base = await fetchAprovadosBaseFB(dias);
-    const codorcs = base.map(r => r.CODORC);
-    const td = await fetchTDByCodorcsMy(codorcs);
-    const mapTD = new Map(td.map(r => [r.codorc, r]));
+    const base = await fetchAprovadosBaseFB(dias)
+    const codorcs = base.map(r => r.CODORC)
+
+    // busca dashboard MySQL
+    const td = await fetchTDByCodorcsMy(codorcs)
+    const mapTD = new Map(td.map(r => [r.codorc, r]))
+
+    // 🔴 novo: busca itens de todos esses orçamentos de uma vez
+    const mapItens = await fetchItensPorOrcamentosFB(codorcs)
 
     const rows = base
       .filter(r => {
-        const t = mapTD.get(r.CODORC);
-        return !t || t.status === 'APROVADO';
+        const t = mapTD.get(r.CODORC)
+        return !t || t.status === 'APROVADO'
       })
       .map(r => {
-        const t = mapTD.get(r.CODORC);
-        const baseDate = t?.status_at || r.DTORC;
-        const diasStatus = Math.floor((Date.now() - new Date(baseDate).getTime()) / 86400000);
-        return { ...r, DIAS_STATUS: diasStatus };
-      });
+        const t = mapTD.get(r.CODORC)
+        const baseDate = t?.status_at || r.DTORC
+        const diasStatus = Math.floor(
+          (Date.now() - new Date(baseDate).getTime()) / 86400000
+        )
 
-    cb(null, rows);
-  })().catch(err => cb(err));
+        const itens = mapItens.get(r.CODORC) || []
+        const estoqueInsuficiente = itens.some(i => i.estoqueInsuficiente)
+
+        return {
+          ...r,
+          DIAS_STATUS: diasStatus,
+          ITENS: itens,
+          ESTOQUE_INSUFICIENTE: estoqueInsuficiente,
+        }
+      })
+
+    cb(null, rows)
+  })().catch(err => cb(err))
 }
 
 async function fetchOrcamentosByCodorcsFB(codorcs) {

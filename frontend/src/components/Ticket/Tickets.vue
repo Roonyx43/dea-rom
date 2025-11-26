@@ -41,6 +41,8 @@
 
 
 <script setup>
+import { computed } from 'vue'
+
 const props = defineProps({
   ticket: { type: Object, required: true },
   color: { type: String, default: 'blue' },
@@ -48,21 +50,56 @@ const props = defineProps({
   daysPrefix: { type: String, default: '' },
 })
 
-const borderClass = {
-  blue: 'border-blue-500',
-  orange: 'border-orange-500',
-  yellow: 'border-yellow-500',
-  purple: 'border-purple-500',
-  red: 'border-red-500',
-}[props.color] || 'border-gray-500'
+const borderClass = computed(() => {
+  const s = props.ticket?.status
 
-const textClass = {
-  blue: 'text-blue-500',
-  orange: 'text-orange-500',
-  yellow: 'text-yellow-500',
-  purple: 'text-purple-500',
-  red: 'text-red-500',
-}[props.color] || 'text-gray-300'
+  // prioridade por status de estoque
+  if (s === 'Falta em estoque') {
+    return 'border-red-600'          // vermelho forte
+  }
+
+  if (s === 'Orçamento irá zerar estoque') {
+    return 'border-orange-700'       // laranja escuro
+  }
+
+  if (s === 'Estoque Zerado') {
+    return 'border-red-400'       // amarelo mais puxado pro dourado
+  }
+
+  // fallback, usa a cor padrão
+  return {
+    blue: 'border-blue-500',
+    orange: 'border-orange-500',
+    yellow: 'border-yellow-500',
+    purple: 'border-purple-500',
+    red: 'border-red-500',
+  }[props.color] || 'border-gray-500'
+})
+
+
+const textClass = computed(() => {
+  const s = props.ticket?.status
+
+  if (s === 'Falta em estoque') {
+    return 'text-red-500'
+  }
+
+  if (s === 'Orçamento irá zerar estoque') {
+    return 'text-orange-500'
+  }
+
+  if (s === 'Estoque Zerado') {
+    return 'text-red-500'
+  }
+
+  return {
+    blue: 'text-blue-500',
+    orange: 'text-orange-500',
+    yellow: 'text-yellow-500',
+    purple: 'text-purple-500',
+    red: 'text-red-500',
+  }[props.color] || 'text-gray-300'
+})
 
 function pluralDays(n) {
   const v = Number.isFinite(n) ? n : 0

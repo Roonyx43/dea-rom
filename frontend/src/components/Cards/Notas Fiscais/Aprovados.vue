@@ -13,7 +13,7 @@ const itensErro = ref('')
 const itensOrcamento = ref([])
 const ticketSelecionado = ref(null)
 
-const API_BASE = 'https://dea-rom-production.up.railway.app'
+const API_BASE = 'https://dea-rom-production.up.railway.app/'
 
 function fmt(d, h) {
   if (!d) return ''
@@ -37,76 +37,118 @@ async function fetchTickets() {
     const res = await fetch(`${API_BASE}/api/tickets/aprovados?dias=30`)
     const dados = await res.json()
 
-    // se backend responder erro, evita quebrar
     if (!res.ok) {
       console.error('Erro ao buscar aprovados:', dados)
       ticketsAprovados.value = []
       return
     }
 
-    ticketsAprovados.value = (dados || []).map(it => ({
-      codigo: it.CODORC || it.codorc || '',
-      local: it.LOCAL_EXIBICAO || '',
-      dataCadastro: fmt(it.DTORC, it.HINS),
-      previsaoEntrega: prev(it.DTORC),
-      responsavel: it.IDENTIFICACAOCLI || '',
-      cor: '#eab308',
-      region: it.UFCLI || '',
-      status: 'Aprovado',
-      dias: Number(it.DIAS_STATUS ?? 0),
-    }))
+    ticketsAprovados.value = (dados || []).map(it => {
+      const itensBrutos = it.ITENS || it.itens || []
+
+      const itensOrcamento = itensBrutos.map(raw => {
+        const qtdSolicitada = Number(raw.qtdSolicitada ?? raw.QTDITORC ?? 0)
+        const saldoAtual = Number(raw.saldoAtual ?? raw.SLDPROD ?? 0)
+        const saldoDepois =
+          raw.saldoDepois !== undefined
+            ? Number(raw.saldoDepois)
+            : saldoAtual - qtdSolicitada
+
+        // 🔹 define status por item
+        let statusEstoque = ''
+        if (saldoAtual === 0) {
+          statusEstoque = 'Estoque Zerado'
+        } else if (saldoAtual > 0 && saldoDepois === 0) {
+          statusEstoque = 'Orçamento irá zerar estoque'
+        } else if (saldoAtual > 0 && saldoDepois < 0) {
+          statusEstoque = 'Falta em estoque'
+        }
+
+        return {
+          codProd: raw.codProd || raw.CODPROD,
+          descProd: raw.descProd || raw.DESCPROD,
+          qtdSolicitada,
+          saldoAtual,
+          saldoDepois,
+          estoqueInsuficiente: saldoDepois < 0,
+          statusEstoque,
+        }
+      })
+
+      // flag de estoque insuficiente continua
+      const flagBackend =
+        it.ESTOQUE_INSUFICIENTE ??
+        it.estoqueInsuficiente ??
+        false
+
+      const flagCalculada = itensOrcamento.some(i => i.estoqueInsuficiente)
+      const estoqueInsuficiente = Boolean(flagBackend || flagCalculada)
+
+      // 🔹 agora definimos o STATUS do ticket baseado nos itens
+      let statusTicket = 'Aprovado'
+
+      const temFalta = itensOrcamento.some(
+        i => i.saldoAtual > 0 && i.saldoDepois < 0
+      )
+      const zeraEstoque = itensOrcamento.some(
+        i => i.saldoAtual > 0 && i.saldoDepois === 0
+      )
+      const jaZerado = itensOrcamento.some(
+        i => i.saldoAtual === 0
+      )
+
+      if (temFalta) {
+        statusTicket = 'Falta em estoque'
+      } else if (zeraEstoque) {
+        statusTicket = 'Orçamento irá zerar estoque'
+      } else if (jaZerado) {
+        statusTicket = 'Estoque Zerado'
+      }
+
+      const ticket = {
+        codigo: it.CODORC || it.codorc || '',
+        local: it.LOCAL_EXIBICAO || '',
+        dataCadastro: fmt(it.DTORC, it.HINS),
+        previsaoEntrega: prev(it.DTORC),
+        responsavel: it.IDENTIFICACAOCLI || '',
+        cor: '#eab308',
+        region: it.UFCLI || '',
+        dias: Number(it.DIAS_STATUS ?? 0),
+
+        // 🔹 aqui entra o novo status calculado
+        status: statusTicket,
+
+        itensOrcamento,
+        estoqueInsuficiente,
+      }
+
+      console.log('Ticket mapeado:', {
+        codigo: ticket.codigo,
+        status: ticket.status,
+        estoqueInsuficiente: ticket.estoqueInsuficiente,
+      })
+
+      return ticket
+    })
+
+    console.log('Todos os tickets aprovados mapeados:', ticketsAprovados.value)
   } finally {
     loading.value = false
   }
 }
 
-// abre o modal de itens e busca no backend
-async function abrirItens(ticket) {
+
+// abre o modal de itens usando o que já veio junto no ticket
+function abrirItens(ticket) {
   ticketSelecionado.value = ticket
   showItensModal.value = true
-  itensLoading.value = true
   itensErro.value = ''
-  itensOrcamento.value = []
 
-  try {
-    const res = await fetch(`${API_BASE}/api/estoque/${ticket.codigo}/itens`)
-    const dados = await res.json()
+  itensLoading.value = false
+  itensOrcamento.value = ticket.itensOrcamento || []
 
-    if (!res.ok) {
-      console.error('Erro ao buscar itens do orçamento:', dados)
-      itensErro.value = dados?.error || 'Erro ao buscar itens do orçamento'
-      return
-    }
-
-    itensOrcamento.value = (dados || []).map(it => {
-      const qtdSolicitada = Number(it.qtdSolicitada ?? it.QTDITORC ?? 0)
-      const saldoAtual = Number(it.saldoAtual ?? it.SLDPROD ?? 0)
-      const saldoDepois =
-        it.saldoDepois !== undefined
-          ? Number(it.saldoDepois)
-          : saldoAtual - qtdSolicitada
-
-      return {
-        codProd: it.codProd || it.CODPROD,
-        descProd: it.descProd || it.DESCPROD,
-        qtdSolicitada,
-        saldoAtual,
-        saldoDepois,
-        estoqueInsuficiente:
-          it.estoqueInsuficiente !== undefined
-            ? Boolean(it.estoqueInsuficiente)
-            : saldoDepois < 0,
-      }
-    })
-
-    // 🔴 AGORA sim dá pra saber se tem item insuficiente
-    const temInsuficiente = itensOrcamento.value.some(i => i.estoqueInsuficiente)
-    ticket.estoqueInsuficiente = temInsuficiente
-  } catch (err) {
-    console.error('Erro inesperado ao buscar itens:', err)
-    itensErro.value = 'Erro ao buscar itens do orçamento'
-  } finally {
-    itensLoading.value = false
+  if (!itensOrcamento.value.length) {
+    itensErro.value = 'Nenhum item encontrado para este orçamento.'
   }
 }
 
@@ -120,7 +162,6 @@ function fecharModalItens() {
 let unsubscribe
 onMounted(() => {
   fetchTickets()
-  // se alguém voltar de PCP/Recusados -> recarrega Aprovados
   unsubscribe = listenTicketsReload(['aprovados'], () => fetchTickets())
 })
 onBeforeUnmount(() => {
@@ -143,10 +184,20 @@ onBeforeUnmount(() => {
     <div
       class="space-y-2 max-h-[30rem] overflow-y-auto scrollbar-thin scrollbar-thumb-yellow-500 scrollbar-track-gray-800 pr-2"
       style="min-height: 120px">
-      <Tickets v-for="t in ticketsAprovados" :key="t.codigo" :ticket="t" color="yellow" :days="t.dias"
-        daysPrefix="Aprovado" :class="t.estoqueInsuficiente ? 'border border-red-500' : ''">
+      <Tickets
+        v-for="t in ticketsAprovados"
+        :key="t.codigo"
+        :ticket="t"
+        color="yellow"
+        :days="t.dias"
+        daysPrefix="Aprovado"
+        :class="t.estoqueInsuficiente ? 'border border-red-500' : ''"
+      >
         <template #actions>
-          <button class="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs" @click="abrirItens(t)">
+          <button
+            class="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs"
+            @click="abrirItens(t)"
+          >
             Itens
           </button>
         </template>
@@ -168,8 +219,11 @@ onBeforeUnmount(() => {
               Cliente: {{ ticketSelecionado.responsavel }} · Local: {{ ticketSelecionado.local }}
             </p>
           </div>
-          <button class="text-gray-400 hover:text-white text-xl leading-none px-2" @click="fecharModalItens"
-            aria-label="Fechar">
+          <button
+            class="text-gray-400 hover:text-white text-xl leading-none px-2"
+            @click="fecharModalItens"
+            aria-label="Fechar"
+          >
             ×
           </button>
         </div>
@@ -207,8 +261,11 @@ onBeforeUnmount(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in itensOrcamento" :key="item.codProd"
-                    :class="item.estoqueInsuficiente ? 'bg-red-950/40' : 'bg-gray-900'">
+                  <tr
+                    v-for="item in itensOrcamento"
+                    :key="item.codProd"
+                    :class="item.estoqueInsuficiente ? 'bg-red-950/40' : 'bg-gray-900'"
+                  >
                     <td class="px-3 py-2 align-top">
                       <span class="font-mono text-xs">
                         {{ item.codProd }}
@@ -223,10 +280,13 @@ onBeforeUnmount(() => {
                     <td class="px-3 py-2 text-right align-top">
                       {{ item.qtdSolicitada }}
                     </td>
-                    <td class="px-3 py-2 text-right align-top"
-                      :class="item.estoqueInsuficiente ? 'text-red-300 font-semibold' : ''">
+                    <td
+                      class="px-3 py-2 text-right align-top"
+                      :class="item.estoqueInsuficiente ? 'text-red-300 font-semibold' : ''"
+                    >
                       {{ item.saldoDepois }}
                     </td>
+                    
                   </tr>
                 </tbody>
               </table>
@@ -239,8 +299,10 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="flex justify-end gap-2 border-t border-gray-800 px-4 py-3">
-          <button class="px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm text-gray-100"
-            @click="fecharModalItens">
+          <button
+            class="px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm text-gray-100"
+            @click="fecharModalItens"
+          >
             Fechar
           </button>
         </div>
