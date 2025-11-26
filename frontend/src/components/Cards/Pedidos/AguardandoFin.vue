@@ -67,7 +67,7 @@ const mapFin = (item) => {
 }
 
 const { items: listaBruta, loading } = useRealtimeList({
-  endpoint: 'https://dea-rom-production.up.railway.app/api/orcamentos-aguardando-financeiro?dias=30',
+  endpoint: 'https://dea-rom-production.up.railway.app/api/tabela/orcamentos-aguardando-financeiro?dias=30',
   eventName: 'tabelaAguardandoFinanceiroAtualizada',
   mapFn: mapFin,
   sortFn: (a, b) => String(b.dataCadastro).localeCompare(String(a.dataCadastro)),

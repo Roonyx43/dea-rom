@@ -98,6 +98,10 @@ async function abrirItens(ticket) {
             : saldoDepois < 0,
       }
     })
+
+    // 🔴 AGORA sim dá pra saber se tem item insuficiente
+    const temInsuficiente = itensOrcamento.value.some(i => i.estoqueInsuficiente)
+    ticket.estoqueInsuficiente = temInsuficiente
   } catch (err) {
     console.error('Erro inesperado ao buscar itens:', err)
     itensErro.value = 'Erro ao buscar itens do orçamento'
@@ -130,44 +134,19 @@ onBeforeUnmount(() => {
       <h3 class="text-lg font-semibold text-yellow-500">
         Aprovados<strong class="text-white"> ({{ ticketsAprovados.length }})</strong>
       </h3>
-      <svg
-        v-if="loading"
-        class="animate-spin h-5 w-5 text-yellow-400"
-        viewBox="0 0 24 24"
-      >
-        <circle
-          class="opacity-25"
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          stroke-width="4"
-        />
-        <path
-          class="opacity-75"
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-        />
+      <svg v-if="loading" class="animate-spin h-5 w-5 text-yellow-400" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
       </svg>
     </div>
 
     <div
       class="space-y-2 max-h-[30rem] overflow-y-auto scrollbar-thin scrollbar-thumb-yellow-500 scrollbar-track-gray-800 pr-2"
-      style="min-height: 120px;"
-    >
-      <Tickets
-        v-for="t in ticketsAprovados"
-        :key="t.codigo"
-        :ticket="t"
-        color="yellow"
-        :days="t.dias"
-        daysPrefix="Aprovado"
-      >
+      style="min-height: 120px">
+      <Tickets v-for="t in ticketsAprovados" :key="t.codigo" :ticket="t" color="yellow" :days="t.dias"
+        daysPrefix="Aprovado" :class="t.estoqueInsuficiente ? 'border border-red-500' : ''">
         <template #actions>
-          <button
-            class="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs"
-            @click="abrirItens(t)"
-          >
+          <button class="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs" @click="abrirItens(t)">
             Itens
           </button>
         </template>
@@ -175,13 +154,8 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Modal de itens do orçamento -->
-    <div
-      v-if="showItensModal"
-      class="fixed inset-0 z-40 flex items-center justify-center bg-black/60"
-    >
-      <div
-        class="bg-gray-900 border border-yellow-500 rounded-lg shadow-xl max-w-3xl w-full mx-4"
-      >
+    <div v-if="showItensModal" class="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
+      <div class="bg-gray-900 border border-yellow-500 rounded-lg shadow-xl max-w-3xl w-full mx-4">
         <div class="flex items-center justify-between border-b border-gray-700 px-4 py-3">
           <div>
             <h2 class="text-lg font-semibold text-yellow-400">
@@ -194,11 +168,8 @@ onBeforeUnmount(() => {
               Cliente: {{ ticketSelecionado.responsavel }} · Local: {{ ticketSelecionado.local }}
             </p>
           </div>
-          <button
-            class="text-gray-400 hover:text-white text-xl leading-none px-2"
-            @click="fecharModalItens"
-            aria-label="Fechar"
-          >
+          <button class="text-gray-400 hover:text-white text-xl leading-none px-2" @click="fecharModalItens"
+            aria-label="Fechar">
             ×
           </button>
         </div>
@@ -207,44 +178,24 @@ onBeforeUnmount(() => {
           <!-- loading dos itens -->
           <div v-if="itensLoading" class="flex items-center gap-2 text-yellow-300 text-sm">
             <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              />
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-              />
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
             </svg>
             Carregando itens do orçamento...
           </div>
 
           <!-- erro -->
-          <div
-            v-else-if="itensErro"
-            class="text-sm text-red-400 bg-red-950/40 border border-red-700 rounded px-3 py-2"
-          >
+          <div v-else-if="itensErro" class="text-sm text-red-400 bg-red-950/40 border border-red-700 rounded px-3 py-2">
             {{ itensErro }}
           </div>
 
           <!-- tabela -->
           <div v-else>
-            <div
-              v-if="itensOrcamento.length === 0"
-              class="text-sm text-gray-400"
-            >
+            <div v-if="itensOrcamento.length === 0" class="text-sm text-gray-400">
               Nenhum item encontrado para este orçamento.
             </div>
 
-            <div
-              v-else
-              class="overflow-x-auto max-h-[20rem] border border-gray-700 rounded"
-            >
+            <div v-else class="overflow-x-auto max-h-[20rem] border border-gray-700 rounded">
               <table class="min-w-full text-xs md:text-sm text-left text-gray-200">
                 <thead class="bg-gray-800 sticky top-0 z-10">
                   <tr>
@@ -256,11 +207,8 @@ onBeforeUnmount(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr
-                    v-for="item in itensOrcamento"
-                    :key="item.codProd"
-                    :class="item.estoqueInsuficiente ? 'bg-red-950/40' : 'bg-gray-900'"
-                  >
+                  <tr v-for="item in itensOrcamento" :key="item.codProd"
+                    :class="item.estoqueInsuficiente ? 'bg-red-950/40' : 'bg-gray-900'">
                     <td class="px-3 py-2 align-top">
                       <span class="font-mono text-xs">
                         {{ item.codProd }}
@@ -275,10 +223,8 @@ onBeforeUnmount(() => {
                     <td class="px-3 py-2 text-right align-top">
                       {{ item.qtdSolicitada }}
                     </td>
-                    <td
-                      class="px-3 py-2 text-right align-top"
-                      :class="item.estoqueInsuficiente ? 'text-red-300 font-semibold' : ''"
-                    >
+                    <td class="px-3 py-2 text-right align-top"
+                      :class="item.estoqueInsuficiente ? 'text-red-300 font-semibold' : ''">
                       {{ item.saldoDepois }}
                     </td>
                   </tr>
@@ -286,20 +232,15 @@ onBeforeUnmount(() => {
               </table>
             </div>
 
-            <p
-              v-if="itensOrcamento.some(i => i.estoqueInsuficiente)"
-              class="mt-2 text-xs text-red-300"
-            >
+            <p v-if="itensOrcamento.some(i => i.estoqueInsuficiente)" class="mt-2 text-xs text-red-300">
               Existem itens com estoque insuficiente.
             </p>
           </div>
         </div>
 
         <div class="flex justify-end gap-2 border-t border-gray-800 px-4 py-3">
-          <button
-            class="px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm text-gray-100"
-            @click="fecharModalItens"
-          >
+          <button class="px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm text-gray-100"
+            @click="fecharModalItens">
             Fechar
           </button>
         </div>
