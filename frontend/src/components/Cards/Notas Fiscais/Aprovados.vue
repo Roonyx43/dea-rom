@@ -13,7 +13,7 @@ const itensErro = ref('')
 const itensOrcamento = ref([])
 const ticketSelecionado = ref(null)
 
-const API_BASE = 'https://dea-rom-production.up.railway.app/'
+const API_BASE = 'https://dea-rom-production.up.railway.app'
 
 function fmt(d, h) {
   if (!d) return ''
