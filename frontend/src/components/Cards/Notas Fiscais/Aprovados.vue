@@ -13,7 +13,7 @@ const itensErro = ref('')
 const itensOrcamento = ref([])
 const ticketSelecionado = ref(null)
 
-const API_BASE = 'https://dea-rom-production.up.railway.app'
+const API_BASE = 'http://localhost:3000'
 
 function fmt(d, h) {
   if (!d) return ''
@@ -290,8 +290,7 @@ onBeforeUnmount(() => {
               v-if="itensOrcamento.some(i => i.estoqueInsuficiente)"
               class="mt-2 text-xs text-red-300"
             >
-              Existem itens com estoque insuficiente. Depois a gente pluga aqui a lógica para
-              enviar o orçamento para "Aguardando PCP".
+              Existem itens com estoque insuficiente.
             </p>
           </div>
         </div>

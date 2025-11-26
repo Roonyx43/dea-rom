@@ -227,15 +227,52 @@ async function fetchUnificadoOAOCCD(dias) {
   return fbQuery(sql, [n]);
 }
 
+/**
+ * Busca, no Firebird, quais CODORC têm pelo menos um item com
+ * saldoDepois (SLDPROD - QTDITORC) < 0.
+ */
+async function fetchCodorcsComEstoqueInsuficienteFB(codorcs) {
+  if (!Array.isArray(codorcs) || codorcs.length === 0) return [];
+  const ints = codorcs.map(n => parseInt(n, 10)).filter(Number.isFinite);
+  if (!ints.length) return [];
+  const inList = ints.join(',');
+
+  const sql = `
+    SELECT DISTINCT o.CODORC
+    FROM VDITORCAMENTO o
+    JOIN EQPRODUTO e
+      ON e.CODEMP   = o.CODEMP
+     AND e.CODFILIAL = o.CODFILIAL
+     AND e.CODPROD   = o.CODPROD
+    WHERE o.CODEMP=7
+      AND o.CODFILIAL=1
+      AND o.CODORC IN (${inList})
+      AND (e.SLDPROD - o.QTDITORC) < 0
+  `;
+
+  return fbQuery(sql);
+}
+
 async function listarAguardandoPCP(cb) {
   try {
     const [rows] = await pool.query(
       `SELECT codorc, codcli, status, username, motivo, status_at FROM tickets_dashboard WHERE status='AGUARDANDO_PCP' ORDER BY status_at DESC`
     );
     if (!rows.length) return cb(null, []);
-    const detalhes = await fetchOrcamentosByCodorcsFB(rows.map(r => r.codorc));
+
+    const codorcs = rows.map(r => r.codorc);
+
+    // Filtra apenas orçamentos que realmente têm falta de estoque
+    const criticos = await fetchCodorcsComEstoqueInsuficienteFB(codorcs);
+    const criticosSet = new Set(criticos.map(c => c.CODORC));
+
+    const filtrados = rows.filter(r => criticosSet.has(r.codorc));
+    if (!filtrados.length) return cb(null, []);
+
+    const detalhes = await fetchOrcamentosByCodorcsFB(filtrados.map(r => r.codorc));
     const map = new Map(detalhes.map(d => [d.CODORC, d]));
-    const out = rows.map(t => {
+
+    const out = filtrados.map(t => {
       const d = map.get(t.codorc) || {};
       const dias = Math.floor((Date.now() - new Date(t.status_at).getTime()) / 86400000);
       return {
