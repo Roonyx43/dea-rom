@@ -13,6 +13,7 @@ function listarItensPorOrcamento(req, res) {
     SELECT 
       o.CODEMP, 
       o.CODFILIAL, 
+      o.CODCLI,
       o.CODORC, 
       o.CODPROD, 
       o.QTDITORC, 

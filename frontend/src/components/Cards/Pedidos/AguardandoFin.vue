@@ -51,6 +51,7 @@ const mapFin = (item) => {
   const statusCliente = String(item.STATUS_CLIENTE || '').trim()
   return {
     codigo: item.CODORC ?? '',
+    codCli: item.CODCLI || item.codcli || null,
     local: item.LOCAL_EXIBICAO || item.BAIRCLI || '',
     dataCadastro: formatarDataHoraSeparados(item.DTORC, item.HINS),
     previsaoEntrega: calcularPrevisaoEntrega(item.DTORC),

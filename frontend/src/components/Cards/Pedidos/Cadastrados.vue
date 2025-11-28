@@ -55,14 +55,16 @@ const mapCad = (item) => {
 
   return {
     codigo: item.CODORC || '',
+    codCli: item.CODCLI || item.codcli || null, // 👈 badge vai usar isso
+
     local: item.BAIRCLI || item.LOCAL_EXIBICAO || '',
     dataCadastro: formatarDataHoraSeparados(item.DTORC, item.HINS) || '',
     previsaoEntrega: calcularPrevisaoEntrega(item.DTORC) || '',
     responsavel: (item.IDENTIFICACAOCLI || '').trim(),
     cor: '#22d3ee',
     region: item.UFCLI || '',
-    // No card de cadastrados exibimos "Cadastrado" para OA/OC/CD
     status: (statusOrc === 'OC' || statusOrc === 'OA' || statusOrc === 'CD') ? 'Cadastrado' : statusOrc,
+
     // filtros
     tipoMov: tipo,
     tipoMovNome: tipo === 600
@@ -122,16 +124,14 @@ const loading = computed(() => loadingCad.value || loadingFin.value)
 
       <div class="flex items-center gap-2">
         <label class="text-gray-300 text-sm">Tipo de movimento</label>
-        <select
-          v-model="filtroTipo"
-          class="bg-gray-900 text-gray-100 rounded px-2 py-1 border border-gray-700"
-        >
+        <select v-model="filtroTipo" class="bg-gray-900 text-gray-100 rounded px-2 py-1 border border-gray-700">
           <option value="all">Todos</option>
           <option value="600">Pedido de Venda</option>
           <option value="660">Proposta de Venda</option>
         </select>
 
-        <svg v-if="loading" class="animate-spin h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <svg v-if="loading" class="animate-spin h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none"
+          viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
         </svg>
@@ -140,14 +140,8 @@ const loading = computed(() => loadingCad.value || loadingFin.value)
 
     <div
       class="space-y-2 max-h-[30rem] overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-gray-800 pr-2"
-      style="min-height: 120px;"
-    >
-      <Tickets
-        v-for="t in ticketsFiltrados"
-        :key="t.codigo"
-        :ticket="t"
-        color="blue"
-      />
+      style="min-height: 120px;">
+      <Tickets v-for="t in ticketsFiltrados" :key="t.codigo" :ticket="t" color="blue" />
     </div>
   </div>
 </template>

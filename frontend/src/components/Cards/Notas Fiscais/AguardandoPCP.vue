@@ -45,6 +45,7 @@ async function fetchTickets() {
 
     ticketsPCP.value = (dados || []).map(it => ({
       codigo: it.CODORC || it.codorc || '',
+      codCli: it.CODCLI || it.codcli || null,
       local: it.LOCAL_EXIBICAO || '',
       dataCadastro: fmt(it.DTORC, it.HINS),
       previsaoEntrega: prev(it.DTORC),
