@@ -29,6 +29,14 @@
         <h3 class="text-2xl font-bold mb-3 text-blue-400">Pedidos</h3>
         <p class="text-sm text-gray-300">Cadastrados + Aguardando Fin</p>
       </RouterLink>
+
+      <RouterLink
+        to="/dashboards/aguardando-pcp"
+        class="flex flex-col items-center justify-center rounded-2xl border-2 border-red-500 p-8 shadow-lg hover:scale-105 transition transform bg-gray-800"
+      >
+        <h3 class="text-2xl font-bold mb-3 text-red-400">Pedidos</h3>
+        <p class="text-sm text-gray-300">Aguardando PCP</p>
+      </RouterLink>
     </div>
   </section>
 </template>
