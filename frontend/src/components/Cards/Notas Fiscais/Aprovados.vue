@@ -185,7 +185,6 @@ async function fetchTickets() {
       const ticket = {
         codigo: it.CODORC || it.codorc || '',
         codCli: it.CODCLI || it.codcli || null,
-
         local: it.LOCAL_EXIBICAO || '',
         dataCadastro: formatarDataHoraBonita(dataCadastroDate),
         previsaoEntrega: formatarDataSimplesBonita(dataPrevisaoDate),

@@ -82,8 +82,7 @@ async function fetchItensPorOrcamentosFB(codorcs) {
   const sql = `
     SELECT 
       o.CODEMP, 
-      o.CODFILIAL, 
-      o.CODCLI,
+      o.CODFILIAL,
       o.CODORC, 
       o.CODPROD, 
       o.QTDITORC, 
@@ -110,6 +109,7 @@ async function fetchItensPorOrcamentosFB(codorcs) {
     const item = {
       codEmp: r.CODEMP,
       codFilial: r.CODFILIAL,
+      codCli: r.CODCLI,
       codOrc: r.CODORC,
       codProd: r.CODPROD,
       descProd: r.DESCPROD,
