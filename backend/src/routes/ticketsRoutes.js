@@ -74,14 +74,17 @@ router.get('/aguardando-pcp', (req, res) => {
   });
 });
 
-// Lista recusados
 // GET /api/tickets/recusados
+// Lista recusados (últimos N dias, padrão 30)
+// GET /api/tickets/recusados?dias=30
 router.get('/recusados', (req, res) => {
-  listarRecusados((err, rows) => {
+  listarRecusados(30, (err, rows) => {
     if (err) return fail(res, 'recusados')(err);
     return res.json(rows || []);
   });
 });
+
+
 
 // Health MySQL
 // GET /api/tickets/health/mysql

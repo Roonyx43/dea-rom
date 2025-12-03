@@ -49,18 +49,27 @@ function calcularPrevisaoEntrega(dataCadastro) {
 // mapeia direto do payload do backend unificado
 const mapFin = (item) => {
   const statusCliente = String(item.STATUS_CLIENTE || '').trim()
+
   return {
     codigo: item.CODORC ?? '',
     codCli: item.CODCLI || item.codcli || null,
+
+    // entrega
     local: item.LOCAL_EXIBICAO || item.BAIRCLI || '',
+    entregador: item.ENTREGADOR || item.entregador || 'Transportadora',
+
     dataCadastro: formatarDataHoraSeparados(item.DTORC, item.HINS),
     previsaoEntrega: calcularPrevisaoEntrega(item.DTORC),
     responsavel: (item.IDENTIFICACAOCLI || '').trim(),
     cor: '#f97316',
-    region: item.UFCLI || '',
+
+    // UF de entrega se tiver, senão UF do cliente
+    region: item.UFENT || item.UFCLI || '',
+
     tipoMov: Number(item.CODTIPOMOV || 0),
     statusCliente,
     motivo_financeiro: item.MOTIVO_BLOQUEIO || null,
+
     // rótulos para o card
     status: 'Aguardando Financeiro',
     status_financeiro: statusCliente || 'Bloqueado',

@@ -1,7 +1,8 @@
 // controllers/tabelaController.js
 const { withDbActive } = require('../config/db');
+const { pool } = require('../config/mysql');
 
-// 🔒 NÃO ALTERE A QUERY: deixada exatamente como você mandou
+// 🔒 NÃO ALTERE A QUERY: exatamente como você mandou
 const QUERY_ORCAMENTOS = `
      SELECT
       o.CODEMP,
@@ -120,13 +121,64 @@ const QUERY_ORCAMENTOS = `
     ORDER BY o.DTORC DESC, o.HINS DESC
 `;
 
+// helper pra pegar entregador a partir do "local" (bairro/cidade)
+async function findEntregadorByLocal(localExibicao, bairCli) {
+  const raw = localExibicao || bairCli || '';
+  const local = raw.trim();
+
+  if (!local) return 'Transportadora';
+
+  // tenta bater com BAIRRO ou CIDADE na mesma tabela
+  const [rows] = await pool.query(
+    `
+      SELECT entregador
+      FROM entregador_bairro
+      WHERE UPPER(TRIM(bairro)) = UPPER(?)
+         OR UPPER(TRIM(cidade)) = UPPER(?)
+      LIMIT 1
+    `,
+    [local, local]
+  );
+
+  if (rows.length) {
+    return rows[0].entregador;
+  }
+
+  return 'Transportadora';
+}
+
 function buscarOrcamentosUnificadoPorDias(_ignored, cb) {
   withDbActive((err, db) => {
     if (err) return cb(err);
-    db.query(QUERY_ORCAMENTOS, [], (e, rows) => {
+
+    db.query(QUERY_ORCAMENTOS, [], async (e, rows) => {
       try {
         if (e) return cb(e);
-        return cb(null, rows || []);
+
+        const base = rows || [];
+
+        // adiciona ENTREGADOR em cada linha
+        try {
+          const enriquecidos = await Promise.all(
+            base.map(async (r) => {
+              const entregador = await findEntregadorByLocal(
+                r.LOCAL_EXIBICAO,
+                r.BAIRCLI
+              );
+
+              return {
+                ...r,
+                ENTREGADOR: entregador,
+              };
+            })
+          );
+
+          return cb(null, enriquecidos);
+        } catch (errEnt) {
+          console.error('Erro ao buscar entregadores (tabelaController):', errEnt);
+          // fallback: devolve sem ENTREGADOR se der erro no MySQL
+          return cb(null, base);
+        }
       } finally {
         try { db.detach(); } catch (_) {}
       }

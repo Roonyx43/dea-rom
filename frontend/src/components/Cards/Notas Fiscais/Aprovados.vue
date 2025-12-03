@@ -152,7 +152,6 @@ async function fetchTickets() {
       const flagCalculada = itensOrcamento.some(i => i.estoqueInsuficiente)
       const estoqueInsuficiente = Boolean(flagBackend || flagCalculada)
 
-      // separa os itens por tipo de problema
       const itensFalta = itensOrcamento.filter(
         i => i.saldoAtual > 0 && i.saldoDepois < 0
       )
@@ -163,7 +162,6 @@ async function fetchTickets() {
         i => i.saldoAtual === 0
       )
 
-      // observação por TICKET, usando os códigos
       let observacaoEstoque = ''
       if (itensFalta.length) {
         const cods = itensFalta.map(i => i.codProd).join(', ')
@@ -178,14 +176,14 @@ async function fetchTickets() {
 
       const statusBase = it.STATUS ?? 'Aprovado'
 
-      // datas
       const dataCadastroDate = montarDataCadastro(it.DTORC, it.HINS)
       const dataPrevisaoDate = calcularDataPrevisaoDate(dataCadastroDate)
 
       const ticket = {
         codigo: it.CODORC || it.codorc || '',
         codCli: it.CODCLI || it.codcli || null,
-        local: it.LOCAL_EXIBICAO || '',
+        local: (it.LOCAL_EXIBICAO || '').trim(),
+        entregador: it.ENTREGADOR ?? null,
         dataCadastro: formatarDataHoraBonita(dataCadastroDate),
         previsaoEntrega: formatarDataSimplesBonita(dataPrevisaoDate),
         responsavel: it.IDENTIFICACAOCLI || '',
@@ -199,6 +197,7 @@ async function fetchTickets() {
         itensOrcamento,
         estoqueInsuficiente,
       }
+
 
       return ticket
     })
@@ -234,8 +233,8 @@ async function solicitarItens(t) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        status: 'AGUARDANDO_PCP',   // mesmo padrão usado no backend
-        username: 'lofs',           // se tiver usuário logado, você troca aqui depois
+        status: 'AGUARDANDO_PCP',
+        username: 'lofs',
         motivo: t.observacaoEstoque || null,
       }),
     })
@@ -244,16 +243,13 @@ async function solicitarItens(t) {
 
     if (!res.ok) {
       console.error('Erro ao enviar para PCP:', body)
-      // se quiser, dá pra exibir um toast/alert aqui
       return
     }
 
-    // remove do card de Aprovados
     ticketsAprovados.value = ticketsAprovados.value.filter(
       x => x.codigo !== t.codigo
     )
 
-    // avisa o card de PCP para recarregar
     triggerTicketsReload('pcp')
   } catch (err) {
     console.error('Erro inesperado ao enviar para PCP:', err)
@@ -269,8 +265,6 @@ onBeforeUnmount(() => {
   unsubscribe?.()
 })
 </script>
-
-
 
 <template>
   <div class="bg-gray-800 p-5 rounded-lg border border-yellow-600">
@@ -294,7 +288,6 @@ onBeforeUnmount(() => {
             Itens
           </button>
 
-          <!-- novo botão -->
           <button v-if="t.observacaoEstoque"
             class="px-3 py-1 rounded bg-purple-700 hover:bg-purple-600 text-white text-xs" @click="solicitarItens(t)">
             Solicitar Itens
@@ -314,8 +307,11 @@ onBeforeUnmount(() => {
                 #{{ ticketSelecionado.codigo }}
               </span>
             </h2>
+            <!-- 🔹 Aqui mostramos cliente, entregador e local -->
             <p v-if="ticketSelecionado" class="text-xs text-gray-400">
-              Cliente: {{ ticketSelecionado.responsavel }} · Local: {{ ticketSelecionado.local }}
+              Cliente: {{ ticketSelecionado.responsavel }}
+              · Entregador: {{ ticketSelecionado.entregador }}
+              · Local: {{ ticketSelecionado.local }}
             </p>
           </div>
           <button class="text-gray-400 hover:text-white text-xl leading-none px-2" @click="fecharModalItens"
@@ -325,7 +321,6 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="p-4 space-y-3">
-          <!-- loading dos itens -->
           <div v-if="itensLoading" class="flex items-center gap-2 text-yellow-300 text-sm">
             <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
@@ -334,12 +329,10 @@ onBeforeUnmount(() => {
             Carregando itens do orçamento...
           </div>
 
-          <!-- erro -->
           <div v-else-if="itensErro" class="text-sm text-red-400 bg-red-950/40 border border-red-700 rounded px-3 py-2">
             {{ itensErro }}
           </div>
 
-          <!-- tabela -->
           <div v-else>
             <div v-if="itensOrcamento.length === 0" class="text-sm text-gray-400">
               Nenhum item encontrado para este orçamento.
@@ -377,7 +370,6 @@ onBeforeUnmount(() => {
                       :class="item.estoqueInsuficiente ? 'text-red-300 font-semibold' : ''">
                       {{ item.saldoDepois }}
                     </td>
-
                   </tr>
                 </tbody>
               </table>

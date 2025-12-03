@@ -4,12 +4,16 @@
       <div>
         <p class="font-semibold mb-2">NO-{{ ticket.codigo }}</p>
 
-        <p class="font-semibold" :class="textClass"><span
-            class="text-gray-200 px-2 py-[2px] rounded-lg font-mono bg-gray-800 border border-gray-600">{{ ticket.codCli
-            }}</span> {{ ticket.responsavel }}</p>
+        <p class="font-semibold" :class="textClass">
+          <span
+            class="text-gray-200 px-2 py-[2px] rounded-lg font-mono bg-gray-800 border border-gray-600"
+          >
+            {{ ticket.codCli }}
+          </span>
+          {{ ticket.responsavel }}
+        </p>
         <p class="text-xs text-gray-400 mt-3">Data de Cadastro: {{ ticket.dataCadastro }}</p>
         <p class="text-xs text-gray-400">Previsão de Entrega: {{ ticket.previsaoEntrega }}</p>
-
 
         <!-- Exibe motivo do BLOQUEIO calculado -->
         <p v-if="ticket.motivo_financeiro" class="text-xs text-red-500 mt-1">
@@ -18,8 +22,21 @@
       </div>
 
       <div class="flex justify-end gap-2">
-        <p class="text-sm mt-0">{{ ticket.local }}</p>
-        <span class="inline-block w-5 h-5 rounded" :style="{ backgroundColor: ticket.cor }"></span>
+        <!-- 🔹 Entregador em cima, local embaixo -->
+        <div class="flex flex-col items-end text-right">
+          <p class="text-sm mt-0">
+            {{ ticket.entregador || 'Transportadora' }}
+          </p>
+          <p v-if="ticket.local" class="text-xs text-gray-300">
+            {{ ticket.local }}
+          </p>
+        </div>
+
+        <!-- Quadradinho de cor do entregador -->
+        <span
+          class="inline-block w-5 h-5 rounded"
+          :style="{ backgroundColor: entregadorColor }"
+        ></span>
       </div>
     </div>
 
@@ -37,7 +54,6 @@
       </p>
       <slot name="actions" v-if="!ticket.observacaoEstoque"></slot>
     </div>
-
 
     <div class="mt-3 flex gap-2" v-if="ticket.observacaoEstoque">
       <!-- observação de estoque com códigos em negrito -->
@@ -64,28 +80,48 @@ const props = defineProps({
 })
 
 /**
+ * Cor do quadradinho baseada no entregador
+ * Marco  -> azul
+ * Pedro  -> amarelo
+ * Rafa   -> vermelho
+ * Transportadora / outros -> cinza
+ */
+const entregadorColor = computed(() => {
+  const nome = (props.ticket?.entregador || '').trim().toLowerCase()
+
+  if (nome === 'marco') {
+    return '#3b82f6' // blue-500
+  }
+
+  if (nome === 'pedro') {
+    return '#eab308' // yellow-500
+  }
+
+  if (nome === 'rafa' || nome === 'rafael') {
+    return '#ef4444' // red-500
+  }
+
+  return '#6b7280' // gray-500
+})
+
+/**
  * Define cor da borda com base no conteúdo da observacaoEstoque
- * Frases esperadas:
- * - "ficará com saldo negativo no estoque."
- * - "será zerado no estoque."
- * - "Não contém o item ... em estoque."
  */
 const borderClass = computed(() => {
   const obs = props.ticket?.observacaoEstoque || ''
 
   if (obs.includes('saldo negativo')) {
-    return 'border-red-600'      // item ficará negativo
+    return 'border-red-600'
   }
 
   if (obs.includes('será zerado no estoque')) {
-    return 'border-orange-700'   // item vai zerar
+    return 'border-orange-700'
   }
 
   if (obs.includes('Não contém o item')) {
-    return 'border-yellow-600'   // item já está zerado
+    return 'border-yellow-600'
   }
 
-  // fallback: usa cor padrão do card
   return {
     blue: 'border-blue-500',
     orange: 'border-orange-500',
@@ -119,15 +155,6 @@ const textClass = computed(() => {
   }[props.color] || 'text-gray-300'
 })
 
-/**
- * Quebra a observacaoEstoque em pedaços, separando números (códigos)
- * Ex: "O item de código 123, 456 será zerado..."
- * -> [{text: "O item de código ", isCode:false},
- *     {text:"123", isCode:true},
- *     {text:", ", isCode:false},
- *     {text:"456", isCode:true},
- *     {text:" será zerado...", isCode:false}]
- */
 const observacaoTokens = computed(() => {
   const text = props.ticket?.observacaoEstoque || ''
   if (!text) return []
