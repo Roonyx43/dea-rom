@@ -13,7 +13,7 @@ const itensErro = ref('')
 const itensOrcamento = ref([])
 const ticketSelecionado = ref(null)
 
-const API_BASE = 'https://dea-rom-production.up.railway.app'
+const API_BASE = 'http://localhost:3000'
 
 /** ===== helpers de data (mais bonitos) ===== */
 
@@ -182,8 +182,8 @@ async function fetchTickets() {
       const ticket = {
         codigo: it.CODORC || it.codorc || '',
         codCli: it.CODCLI || it.codcli || null,
-        local: (it.LOCAL_EXIBICAO || '').trim(),
-        entregador: it.ENTREGADOR ?? null,
+        entregador: it.ENTREGADOR || 'Transportadora',
+        local: it.LOCAL_EXIBICAO || '',
         dataCadastro: formatarDataHoraBonita(dataCadastroDate),
         previsaoEntrega: formatarDataSimplesBonita(dataPrevisaoDate),
         responsavel: it.IDENTIFICACAOCLI || '',
