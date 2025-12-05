@@ -136,11 +136,21 @@ async function fetchTickets() {
         return {
           codProd,
           descProd: raw.descProd || raw.DESCPROD,
+
+          // quantidade necessária (do orçamento)
           qtdSolicitada,
+
+          // quantidade em estoque
           saldoAtual,
+
+          // quantidade pós remoção (estoque - necessária)
           saldoDepois,
+
           estoqueInsuficiente: saldoDepois < 0,
           statusEstoque,
+
+          // 🔹 novo: quantidade que o operador vai informar
+          qtdSolicitadaOperador: 0,
         }
       })
 
@@ -198,7 +208,6 @@ async function fetchTickets() {
         estoqueInsuficiente,
       }
 
-
       return ticket
     })
   } finally {
@@ -229,13 +238,23 @@ function fecharModalItens() {
 
 async function solicitarItens(t) {
   try {
-    const res = await fetch(`${API_BASE}/api/tickets/${t.codigo}/status`, {
+    // 🔹 monta lista com o que o operador informou
+    const itensSolicitados = (t.itensOrcamento || [])
+      .filter(item => item.qtdSolicitadaOperador && item.qtdSolicitadaOperador > 0)
+      .map(item => ({
+        codProd: item.codProd,
+        quantidadeSolicitada: item.qtdSolicitadaOperador,
+      }))
+
+    const res = await fetch(`${API_BASE}/api/estoque/${t.codigo}/status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         status: 'AGUARDANDO_PCP',
         username: 'lofs',
         motivo: t.observacaoEstoque || null,
+        itensSolicitados,
+        codCli: t.codCli, // 🔹 importante pra conseguir dar INSERT na tickets_dashboard
       }),
     })
 
@@ -288,8 +307,8 @@ onBeforeUnmount(() => {
             Itens
           </button>
 
-          <button v-if="t.observacaoEstoque"
-            class="px-3 py-1 rounded bg-purple-700 hover:bg-purple-600 text-white text-xs" @click="solicitarItens(t)">
+          <button class="px-3 py-1 rounded bg-purple-700 hover:bg-purple-600 text-white text-xs"
+            @click="solicitarItens(t)">
             Solicitar Itens
           </button>
         </template>
@@ -307,7 +326,6 @@ onBeforeUnmount(() => {
                 #{{ ticketSelecionado.codigo }}
               </span>
             </h2>
-            <!-- 🔹 Aqui mostramos cliente, entregador e local -->
             <p v-if="ticketSelecionado" class="text-xs text-gray-400">
               Cliente: {{ ticketSelecionado.responsavel }}
               · Entregador: {{ ticketSelecionado.entregador }}
@@ -344,9 +362,10 @@ onBeforeUnmount(() => {
                   <tr>
                     <th class="px-3 py-2 font-medium">Cód. Produto</th>
                     <th class="px-3 py-2 font-medium">Descrição</th>
-                    <th class="px-3 py-2 font-medium text-right">Saldo atual</th>
-                    <th class="px-3 py-2 font-medium text-right">Solicitado</th>
-                    <th class="px-3 py-2 font-medium text-right">Saldo depois</th>
+                    <th class="px-3 py-2 font-medium text-right">Qtde em estoque</th>
+                    <th class="px-3 py-2 font-medium text-right">Qtde necessária</th>
+                    <th class="px-3 py-2 font-medium text-right">Qtde pós remoção</th>
+                    <th class="px-3 py-2 font-medium text-right">Qtde solicitada</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -370,6 +389,11 @@ onBeforeUnmount(() => {
                       :class="item.estoqueInsuficiente ? 'text-red-300 font-semibold' : ''">
                       {{ item.saldoDepois }}
                     </td>
+                    <td class="px-3 py-2 text-right align-top">
+                      <input v-model.number="item.qtdSolicitadaOperador" type="number" min="0" class="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5
+         text-right text-xs focus:outline-none focus:ring-1 focus:ring-yellow-500
+         numero-compacto" />
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -391,3 +415,15 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.numero-compacto::-webkit-outer-spin-button,
+.numero-compacto::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.numero-compacto[type='number'] {
+  -moz-appearance: textfield;
+}
+</style>

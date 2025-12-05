@@ -114,7 +114,7 @@ router.get('/health/firebird', (req, res) => {
 // Remove do dashboard
 // DELETE /api/tickets/:codorc
 router.delete('/:codorc', (req, res) => {
-  const { codorc } = req.params;
+  const { codorc } = req.par/ams;
   if (!isNumericId(codorc)) return res.status(400).json({ error: 'codorc inválido' });
 
   removerDoDashboard(codorc, (err, out) => {

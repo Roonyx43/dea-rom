@@ -43,8 +43,8 @@
     <p class="text-sm mt-3">
       Status: <strong :class="textClass">{{ ticket.status }}</strong>
     </p>
-    <div class="flex justify-between">
-      <p v-if="days != null" class="text-xs" :class="textClass">
+    <div class="mt-3 flex gap-2">
+      <p v-if="days != null" class="text-xs flex-auto" :class="textClass">
         <template v-if="days <= 0">
           {{ daysPrefix }} desde hoje
         </template>
@@ -52,7 +52,7 @@
           {{ daysPrefix }} há {{ pluralDays(days) }}
         </template>
       </p>
-      <slot name="actions" v-if="!ticket.observacaoEstoque"></slot>
+      <slot name="actions" class="flex-auto" v-if="!ticket.observacaoEstoque"></slot>
     </div>
 
     <div class="mt-3 flex gap-2" v-if="ticket.observacaoEstoque">

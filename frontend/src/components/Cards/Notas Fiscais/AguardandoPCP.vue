@@ -17,7 +17,10 @@ const ticketSelecionado = ref(null)
 
 function fmt(d, h) {
   if (!d) return ''
-  const D = new Date(`${d.substring(0, 10)}T${h ? new Date(h).toTimeString().slice(0, 8) : '00:00:00'}`)
+  const D = new Date(
+    `${d.substring(0, 10)}T${h ? new Date(h).toTimeString().slice(0, 8) : '00:00:00'
+    }`
+  )
   if (isNaN(D)) return ''
   const dd = String(D.getDate()).padStart(2, '0')
   const mm = String(D.getMonth() + 1).padStart(2, '0')
@@ -69,33 +72,53 @@ async function abrirItens(ticket) {
   itensOrcamento.value = []
 
   try {
-    const res = await fetch(`${API_BASE}/api/estoque/${ticket.codigo}/itens`)
-    const dados = await res.json()
+    // 1) busca itens do orçamento (pra pegar código, descrição e saldo atual)
+    const resItens = await fetch(`${API_BASE}/api/estoque/${ticket.codigo}/itens`)
+    const dadosItens = await resItens.json()
 
-    if (!res.ok) {
-      console.error('Erro ao buscar itens do orçamento (PCP):', dados)
-      itensErro.value = dados?.error || 'Erro ao buscar itens do orçamento'
+    if (!resItens.ok) {
+      console.error('Erro ao buscar itens do orçamento (PCP):', dadosItens)
+      itensErro.value = dadosItens?.error || 'Erro ao buscar itens do orçamento'
       return
     }
 
-    itensOrcamento.value = (dados || []).map(it => {
-      const qtdSolicitada = Number(it.qtdSolicitada ?? it.QTDITORC ?? 0)
+    // 2) busca itens solicitados pelo operador (tabela itens_solicitados_pcp)
+    let solicitados = []
+    try {
+      const resSolic = await fetch(
+        `${API_BASE}/api/estoque/${ticket.codigo}/solicitados`
+      )
+      const dadosSolic = await resSolic.json()
+      if (resSolic.ok) {
+        solicitados = dadosSolic || []
+      } else {
+        console.error('Erro ao buscar itens solicitados (PCP):', dadosSolic)
+      }
+    } catch (err) {
+      console.error('Erro inesperado ao buscar itens solicitados (PCP):', err)
+    }
+
+    // 3) monta um mapa cod_produto -> quantidade_solicitada
+    const mapSolicitados = {}
+    for (const row of solicitados) {
+      const cod = String(
+        row.cod_produto || row.codProd || row.CODPROD || ''
+      )
+      mapSolicitados[cod] = Number(row.quantidade_solicitada ?? 0)
+    }
+
+    // 4) monta itens do orçamento + quantidade solicitada pelo operador
+    itensOrcamento.value = (dadosItens || []).map(it => {
+      const codProd = String(it.codProd || it.CODPROD || '')
       const saldoAtual = Number(it.saldoAtual ?? it.SLDPROD ?? 0)
-      const saldoDepois =
-        it.saldoDepois !== undefined
-          ? Number(it.saldoDepois)
-          : saldoAtual - qtdSolicitada
+
+      const qtdSolicitadaOperador = mapSolicitados[codProd] ?? 0
 
       return {
-        codProd: it.codProd || it.CODPROD,
+        codProd,
         descProd: it.descProd || it.DESCPROD,
-        qtdSolicitada,
         saldoAtual,
-        saldoDepois,
-        estoqueInsuficiente:
-          it.estoqueInsuficiente !== undefined
-            ? Boolean(it.estoqueInsuficiente)
-            : saldoDepois < 0,
+        qtdSolicitadaOperador,
       }
     })
   } catch (err) {
@@ -162,20 +185,20 @@ onBeforeUnmount(() => {
 
     <div
       class="space-y-2 max-h-[30rem] overflow-y-auto scrollbar-thin scrollbar-thumb-yellow-500 scrollbar-track-gray-800 pr-2"
-      style="min-height: 120px"
-    >
-      <Tickets
-        v-for="t in ticketsPCP" :key="t.codigo" :ticket="t" color="purple" :days="t.dias" daysPrefix="Aguardando PCP">
-      <template #actions>
-        <button class="px-3 py-1 rounded bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-xs" @click="abrirItens(t)">
-          Itens
-        </button>
+      style="min-height: 120px">
+      <Tickets v-for="t in ticketsPCP" :key="t.codigo" :ticket="t" color="purple" :days="t.dias"
+        daysPrefix="Aguardando PCP">
+        <template #actions>
+          <button class="px-3 py-1 rounded bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-xs"
+            @click="abrirItens(t)">
+            Itens
+          </button>
 
-        <button class="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs"
-          @click="voltarParaAprovados(t)">
-          Voltar p/ Aprovados
-        </button>
-      </template>
+          <button class="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs"
+            @click="voltarParaAprovados(t)">
+            Voltar p/ Aprovados
+          </button>
+        </template>
       </Tickets>
     </div>
 
@@ -185,7 +208,7 @@ onBeforeUnmount(() => {
         <div class="flex items-center justify-between border-b border-gray-700 px-4 py-3">
           <div>
             <h2 class="text-lg font-semibold text-purple-300">
-              Itens com restrição de estoque
+              Itens com solicitação de estoque
               <span v-if="ticketSelecionado" class="text-white">
                 · Orçamento #{{ ticketSelecionado.codigo }}
               </span>
@@ -227,40 +250,40 @@ onBeforeUnmount(() => {
                   <tr>
                     <th class="px-3 py-2 font-medium">Cód. Produto</th>
                     <th class="px-3 py-2 font-medium">Descrição</th>
-                    <th class="px-3 py-2 font-medium text-right">Saldo atual</th>
-                    <th class="px-3 py-2 font-medium text-right">Solicitado</th>
-                    <th class="px-3 py-2 font-medium text-right">Saldo depois</th>
+                    <th class="px-3 py-2 font-medium text-right">Qtde em estoque</th>
+                    <th class="px-3 py-2 font-medium text-right">Qtde solicitada</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in itensOrcamento" :key="item.codProd"
-                    :class="item.estoqueInsuficiente ? 'bg-red-950/40' : 'bg-gray-900'">
+                  <tr v-for="item in itensOrcamento" :key="item.codProd" :class="item.qtdSolicitadaOperador > item.saldoAtual
+                    ? 'bg-yellow-900/40'
+                    : 'bg-gray-900'">
                     <td class="px-3 py-2 align-top">
                       <span class="font-mono text-xs">
                         {{ item.codProd }}
                       </span>
                     </td>
+
                     <td class="px-3 py-2 align-top">
                       {{ item.descProd }}
                     </td>
+
                     <td class="px-3 py-2 text-right align-top">
                       {{ item.saldoAtual }}
                     </td>
-                    <td class="px-3 py-2 text-right align-top">
-                      {{ item.qtdSolicitada }}
-                    </td>
-                    <td class="px-3 py-2 text-right align-top"
-                      :class="item.estoqueInsuficiente ? 'text-red-300 font-semibold' : ''">
-                      {{ item.saldoDepois }}
+
+                    <td class="px-3 py-2 text-right align-top" :class="item.qtdSolicitadaOperador > item.saldoAtual
+                      ? 'text-yellow-300 font-semibold'
+                      : 'text-gray-100'">
+                      {{ item.qtdSolicitadaOperador }}
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            <p v-if="itensOrcamento.some(i => i.estoqueInsuficiente)" class="mt-2 text-xs text-red-300">
-              Todos os orçamentos deste card têm itens com estoque insuficiente.
-              Este quadro é justamente a fila para o PCP analisar.
+            <p class="mt-2 text-xs text-yellow-400">
+              Linhas em amarelo indicam os itens solicitados.
             </p>
           </div>
         </div>

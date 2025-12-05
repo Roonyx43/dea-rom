@@ -456,25 +456,38 @@ async function fetchCodorcsComEstoqueInsuficienteFB(codorcs) {
 // ===== AGUARDANDO PCP =====
 async function listarAguardandoPCP(cb) {
   try {
+    // 1) busca na tickets_dashboard somente quem:
+    //    - está AGUARDANDO_PCP
+    //    - tem itens na tabela itens_solicitados_pcp
     const [rows] = await pool.query(
-      `SELECT codorc, codcli, status, username, motivo, status_at FROM tickets_dashboard WHERE status='AGUARDANDO_PCP' ORDER BY status_at DESC`
-    );
-    if (!rows.length) return cb(null, []);
+      `
+      SELECT td.codorc, td.codcli, td.status, td.username, td.motivo, td.status_at
+      FROM tickets_dashboard td
+      WHERE td.status = 'AGUARDANDO_PCP'
+        AND EXISTS (
+          SELECT 1
+          FROM itens_solicitados_pcp isp
+          WHERE isp.cod_orcamento = td.codorc
+        )
+      ORDER BY td.status_at DESC
+      `
+    )
 
-    const codorcs = rows.map(r => r.codorc);
+    if (!rows.length) return cb(null, [])
 
-    const criticos = await fetchCodorcsComEstoqueInsuficienteFB(codorcs);
-    const criticosSet = new Set(criticos.map(c => c.CODORC));
+    const codorcs = rows.map(r => r.codorc)
 
-    const filtrados = rows.filter(r => criticosSet.has(r.codorc));
-    if (!filtrados.length) return cb(null, []);
+    // 2) busca detalhes do orçamento na Firebird
+    const detalhes = await fetchOrcamentosByCodorcsFB(codorcs)
+    const map = new Map(detalhes.map(d => [d.CODORC, d]))
 
-    const detalhes = await fetchOrcamentosByCodorcsFB(filtrados.map(r => r.codorc));
-    const map = new Map(detalhes.map(d => [d.CODORC, d]));
+    // 3) monta saída base
+    const outBase = rows.map(t => {
+      const d = map.get(t.codorc) || {}
+      const dias = Math.floor(
+        (Date.now() - new Date(t.status_at).getTime()) / 86400000
+      )
 
-    const outBase = filtrados.map(t => {
-      const d = map.get(t.codorc) || {};
-      const dias = Math.floor((Date.now() - new Date(t.status_at).getTime()) / 86400000);
       return {
         CODORC: d.CODORC || t.codorc,
         CODCLI: d.CODCLI || t.codcli,
@@ -489,23 +502,25 @@ async function listarAguardandoPCP(cb) {
         USERNAME: t.username || null,
         MOTIVO: t.motivo || null,
         DIAS_STATUS: dias,
-      };
-    });
+      }
+    })
 
+    // 4) resolve entregador
     const outComEntregador = await Promise.all(
       outBase.map(async (r) => {
         const entregador = await findEntregador(
           r.LOCAL_EXIBICAO || r.BAIRCLI || null
-        );
-        return { ...r, ENTREGADOR: entregador };
+        )
+        return { ...r, ENTREGADOR: entregador }
       })
-    );
+    )
 
-    cb(null, outComEntregador);
+    cb(null, outComEntregador)
   } catch (err) {
-    cb(err);
+    cb(err)
   }
 }
+
 
 // ===== RECUSADOS (lista final) =====
 async function listarRecusados(dias, cb) {
