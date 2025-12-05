@@ -58,9 +58,9 @@
       <RouterLink
         v-if="canSeeDashboard('faturamento')"
         to="/dashboards/faturamento"
-        class="flex flex-col items-center justify-center rounded-2xl border-2 border-red-500 p-8 shadow-lg hover:scale-105 transition transform bg-gray-800"
+        class="flex flex-col items-center justify-center rounded-2xl border-2 border-green-500 p-8 shadow-lg hover:scale-105 transition transform bg-gray-800"
       >
-        <h3 class="text-2xl font-bold mb-3 text-red-400">Faturamento</h3>
+        <h3 class="text-2xl font-bold mb-3 text-green-400">Faturamento</h3>
         <p class="text-sm text-gray-300">Aprovados + Aguardando PCP + Denegados</p>
       </RouterLink>
 
