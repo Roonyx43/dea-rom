@@ -6,7 +6,7 @@ import { triggerTicketsReload, listenTicketsReload } from '../../../composables/
 const ticketsPCP = ref([])
 const loading = ref(false)
 
-const API_BASE = 'https://dea-rom-production.up.railway.app'
+const API_BASE = 'http://localhost:3000'
 
 // estado do modal de itens
 const showItensModal = ref(false)
@@ -72,7 +72,7 @@ async function abrirItens(ticket) {
   itensOrcamento.value = []
 
   try {
-    // 1) busca itens do orçamento (pra pegar código, descrição e saldo atual)
+    // 1) Itens do orçamento (ROM) -> cod, descrição, saldo em estoque
     const resItens = await fetch(`${API_BASE}/api/estoque/${ticket.codigo}/itens`)
     const dadosItens = await resItens.json()
 
@@ -82,13 +82,14 @@ async function abrirItens(ticket) {
       return
     }
 
-    // 2) busca itens solicitados pelo operador (tabela itens_solicitados_pcp)
+    // 2) Itens solicitados pelo operador (tabela itens_solicitados_pcp)
     let solicitados = []
     try {
       const resSolic = await fetch(
         `${API_BASE}/api/estoque/${ticket.codigo}/solicitados`
       )
       const dadosSolic = await resSolic.json()
+
       if (resSolic.ok) {
         solicitados = dadosSolic || []
       } else {
@@ -98,20 +99,23 @@ async function abrirItens(ticket) {
       console.error('Erro inesperado ao buscar itens solicitados (PCP):', err)
     }
 
-    // 3) monta um mapa cod_produto -> quantidade_solicitada
+    // 3) Mapa: cod_produto -> quantidade_solicitada
     const mapSolicitados = {}
     for (const row of solicitados) {
       const cod = String(
-        row.cod_produto || row.codProd || row.CODPROD || ''
-      )
+        row.cod_produto ?? row.codProd ?? row.CODPROD ?? ''
+      ).trim()
+
       mapSolicitados[cod] = Number(row.quantidade_solicitada ?? 0)
     }
 
-    // 4) monta itens do orçamento + quantidade solicitada pelo operador
+    // 4) Monta itens pra tela do PCP
     itensOrcamento.value = (dadosItens || []).map(it => {
-      const codProd = String(it.codProd || it.CODPROD || '')
-      const saldoAtual = Number(it.saldoAtual ?? it.SLDPROD ?? 0)
+      const codProd = String(
+        it.codProd ?? it.CODPROD ?? ''
+      ).trim()
 
+      const saldoAtual = Number(it.saldoAtual ?? it.SLDPROD ?? 0)
       const qtdSolicitadaOperador = mapSolicitados[codProd] ?? 0
 
       return {
@@ -121,6 +125,11 @@ async function abrirItens(ticket) {
         qtdSolicitadaOperador,
       }
     })
+
+    console.log(
+      'Itens PCP (valores reais) ->',
+      JSON.parse(JSON.stringify(itensOrcamento.value))
+    )
   } catch (err) {
     console.error('Erro inesperado ao buscar itens (PCP):', err)
     itensErro.value = 'Erro ao buscar itens do orçamento'
@@ -196,7 +205,7 @@ onBeforeUnmount(() => {
 
           <button class="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs"
             @click="voltarParaAprovados(t)">
-            Voltar p/ Aprovados
+            Concluir
           </button>
         </template>
       </Tickets>
@@ -255,9 +264,14 @@ onBeforeUnmount(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in itensOrcamento" :key="item.codProd" :class="item.qtdSolicitadaOperador > item.saldoAtual
-                    ? 'bg-yellow-900/40'
-                    : 'bg-gray-900'">
+                  <tr
+                    v-for="item in itensOrcamento"
+                    :key="item.codProd"
+                    :class="[
+                      'transition-colors',
+                      item.qtdSolicitadaOperador > 0 ? 'bg-yellow-900/40' : 'bg-gray-900'
+                    ]"
+                  >
                     <td class="px-3 py-2 align-top">
                       <span class="font-mono text-xs">
                         {{ item.codProd }}
@@ -272,13 +286,17 @@ onBeforeUnmount(() => {
                       {{ item.saldoAtual }}
                     </td>
 
-                    <td class="px-3 py-2 text-right align-top" :class="item.qtdSolicitadaOperador > item.saldoAtual
-                      ? 'text-yellow-300 font-semibold'
-                      : 'text-gray-100'">
+                    <td
+                      class="px-3 py-2 text-right align-top"
+                      :class="item.qtdSolicitadaOperador > 0
+                        ? 'text-yellow-300 font-semibold'
+                        : 'text-gray-100'"
+                    >
                       {{ item.qtdSolicitadaOperador }}
                     </td>
                   </tr>
                 </tbody>
+
               </table>
             </div>
 

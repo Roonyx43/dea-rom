@@ -13,7 +13,7 @@ const itensErro = ref('')
 const itensOrcamento = ref([])
 const ticketSelecionado = ref(null)
 
-const API_BASE = 'https://dea-rom-production.up.railway.app'
+const API_BASE = 'http://localhost:3000'
 
 /** ===== helpers de data (mais bonitos) ===== */
 
@@ -149,7 +149,7 @@ async function fetchTickets() {
           estoqueInsuficiente: saldoDepois < 0,
           statusEstoque,
 
-          // 🔹 novo: quantidade que o operador vai informar
+          // quantidade que o operador vai informar
           qtdSolicitadaOperador: 0,
         }
       })
@@ -222,6 +222,7 @@ function abrirItens(ticket) {
   itensErro.value = ''
 
   itensLoading.value = false
+  // usamos o array do ticket, assim o v-model altera direto nele
   itensOrcamento.value = ticket.itensOrcamento || []
 
   if (!itensOrcamento.value.length) {
@@ -236,10 +237,13 @@ function fecharModalItens() {
   itensErro.value = ''
 }
 
-async function solicitarItens(t) {
+async function solicitarItens() {
+  const t = ticketSelecionado.value
+  if (!t) return
+
   try {
-    // 🔹 monta lista com o que o operador informou
-    const itensSolicitados = (t.itensOrcamento || [])
+    // monta lista com o que o operador informou no modal
+    const itensSolicitados = (itensOrcamento.value || [])
       .filter(item => item.qtdSolicitadaOperador && item.qtdSolicitadaOperador > 0)
       .map(item => ({
         codProd: item.codProd,
@@ -254,7 +258,7 @@ async function solicitarItens(t) {
         username: 'lofs',
         motivo: t.observacaoEstoque || null,
         itensSolicitados,
-        codCli: t.codCli, // 🔹 importante pra conseguir dar INSERT na tickets_dashboard
+        codCli: t.codCli,
       }),
     })
 
@@ -265,10 +269,15 @@ async function solicitarItens(t) {
       return
     }
 
+    // remove do card de aprovados
     ticketsAprovados.value = ticketsAprovados.value.filter(
       x => x.codigo !== t.codigo
     )
 
+    // fecha modal e limpa seleção
+    fecharModalItens()
+
+    // avisa o outro quadro
     triggerTicketsReload('pcp')
   } catch (err) {
     console.error('Erro inesperado ao enviar para PCP:', err)
@@ -299,24 +308,34 @@ onBeforeUnmount(() => {
 
     <div
       class="space-y-2 max-h-[30rem] overflow-y-auto scrollbar-thin scrollbar-thumb-yellow-500 scrollbar-track-gray-800 pr-2"
-      style="min-height: 120px">
-      <Tickets v-for="t in ticketsAprovados" :key="t.codigo" :ticket="t" color="yellow" :days="t.dias"
-        daysPrefix="Aprovado" :class="t.estoqueInsuficiente ? 'border border-red-500' : ''">
+      style="min-height: 120px"
+    >
+      <Tickets
+        v-for="t in ticketsAprovados"
+        :key="t.codigo"
+        :ticket="t"
+        color="yellow"
+        :days="t.dias"
+        daysPrefix="Aprovado"
+        :class="t.estoqueInsuficiente ? 'border border-red-500' : ''"
+      >
         <template #actions>
-          <button class="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs" @click="abrirItens(t)">
+          <button
+            class="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs"
+            @click="abrirItens(t)"
+          >
             Itens
           </button>
-
-          <button class="px-3 py-1 rounded bg-purple-700 hover:bg-purple-600 text-white text-xs"
-            @click="solicitarItens(t)">
-            Solicitar Itens
-          </button>
+          <!-- 🔸 SolicitAR ITENS saiu daqui -->
         </template>
       </Tickets>
     </div>
 
     <!-- Modal de itens do orçamento -->
-    <div v-if="showItensModal" class="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
+    <div
+      v-if="showItensModal"
+      class="fixed inset-0 z-40 flex items-center justify-center bg-black/60"
+    >
       <div class="bg-gray-900 border border-yellow-500 rounded-lg shadow-xl max-w-3xl w-full mx-4">
         <div class="flex items-center justify-between border-b border-gray-700 px-4 py-3">
           <div>
@@ -332,8 +351,11 @@ onBeforeUnmount(() => {
               · Local: {{ ticketSelecionado.local }}
             </p>
           </div>
-          <button class="text-gray-400 hover:text-white text-xl leading-none px-2" @click="fecharModalItens"
-            aria-label="Fechar">
+          <button
+            class="text-gray-400 hover:text-white text-xl leading-none px-2"
+            @click="fecharModalItens"
+            aria-label="Fechar"
+          >
             ×
           </button>
         </div>
@@ -347,7 +369,10 @@ onBeforeUnmount(() => {
             Carregando itens do orçamento...
           </div>
 
-          <div v-else-if="itensErro" class="text-sm text-red-400 bg-red-950/40 border border-red-700 rounded px-3 py-2">
+          <div
+            v-else-if="itensErro"
+            class="text-sm text-red-400 bg-red-950/40 border border-red-700 rounded px-3 py-2"
+          >
             {{ itensErro }}
           </div>
 
@@ -369,8 +394,11 @@ onBeforeUnmount(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in itensOrcamento" :key="item.codProd"
-                    :class="item.estoqueInsuficiente ? 'bg-red-950/40' : 'bg-gray-900'">
+                  <tr
+                    v-for="item in itensOrcamento"
+                    :key="item.codProd"
+                    :class="item.estoqueInsuficiente ? 'bg-red-950/40' : 'bg-gray-900'"
+                  >
                     <td class="px-3 py-2 align-top">
                       <span class="font-mono text-xs">
                         {{ item.codProd }}
@@ -385,30 +413,51 @@ onBeforeUnmount(() => {
                     <td class="px-3 py-2 text-right align-top">
                       {{ item.qtdSolicitada }}
                     </td>
-                    <td class="px-3 py-2 text-right align-top"
-                      :class="item.estoqueInsuficiente ? 'text-red-300 font-semibold' : ''">
+                    <td
+                      class="px-3 py-2 text-right align-top"
+                      :class="item.estoqueInsuficiente ? 'text-red-300 font-semibold' : ''"
+                    >
                       {{ item.saldoDepois }}
                     </td>
                     <td class="px-3 py-2 text-right align-top">
-                      <input v-model.number="item.qtdSolicitadaOperador" type="number" min="0" class="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5
-         text-right text-xs focus:outline-none focus:ring-1 focus:ring-yellow-500
-         numero-compacto" />
+                      <input
+                        v-model.number="item.qtdSolicitadaOperador"
+                        type="number"
+                        min="0"
+                        class="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5
+                               text-right text-xs focus:outline-none focus:ring-1 focus:ring-yellow-500
+                               numero-compacto"
+                      />
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            <p v-if="itensOrcamento.some(i => i.estoqueInsuficiente)" class="mt-2 text-xs text-red-300">
+            <p
+              v-if="itensOrcamento.some(i => i.estoqueInsuficiente)"
+              class="mt-2 text-xs text-red-300"
+            >
               Existem itens com estoque insuficiente.
             </p>
           </div>
         </div>
 
         <div class="flex justify-end gap-2 border-t border-gray-800 px-4 py-3">
-          <button class="px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm text-gray-100"
-            @click="fecharModalItens">
+          <button
+            class="px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm text-gray-100"
+            @click="fecharModalItens"
+          >
             Fechar
+          </button>
+
+          <button
+            class="px-4 py-1.5 rounded bg-purple-700 hover:bg-purple-600 text-sm text-white
+                   disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="!itensOrcamento.some(i => i.qtdSolicitadaOperador && i.qtdSolicitadaOperador > 0)"
+            @click="solicitarItens"
+          >
+            Solicitar Itens
           </button>
         </div>
       </div>

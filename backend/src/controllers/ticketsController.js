@@ -58,32 +58,50 @@ function fbQuery(sql, params = []) {
 
 async function moverStatusTicket({ codorc, status, username, motivo }, cb) {
   try {
-    const cod = parseInt(codorc, 10);
-    if (!Number.isFinite(cod)) return cb(new Error('codorc inválido'));
+    const cod = parseInt(codorc, 10)
+    if (!Number.isFinite(cod)) return cb(new Error('codorc inválido'))
 
+    // Busca CODCLI na Firebird
     const rs = await fbQuery(
       `SELECT FIRST 1 CODCLI FROM VDORCAMENTO WHERE CODEMP=7 AND CODFILIAL=1 AND CODORC=?`,
       [cod]
-    );
-    const row = rs[0];
-    if (!row) return cb(new Error('Orçamento não encontrado'));
+    )
+    const row = rs[0]
+    if (!row) return cb(new Error('Orçamento não encontrado'))
 
+    // UPSERT na tickets_dashboard
     const upsert = `
       INSERT INTO tickets_dashboard (codorc, codcli, status, status_at, created_at, updated_at, username, motivo)
       VALUES (?, ?, ?, NOW(), NOW(), NOW(), ?, ?)
       ON DUPLICATE KEY UPDATE
-        status = VALUES(status),
-        status_at = NOW(),
+        status     = VALUES(status),
+        status_at  = NOW(),
         updated_at = NOW(),
-        username = VALUES(username),
-        motivo = VALUES(motivo)
-    `;
-    await pool.query(upsert, [cod, row.CODCLI, status, username || null, motivo || null]);
-    cb(null, { ok: true });
+        username   = VALUES(username),
+        motivo     = VALUES(motivo)
+    `
+    await pool.query(upsert, [
+      cod,
+      row.CODCLI,
+      status,
+      username || null,
+      motivo || null,
+    ])
+
+    // 🔹 Se voltou para APROVADO, limpa os itens solicitados pro PCP
+    if (status === 'APROVADO') {
+      await pool.query(
+        'DELETE FROM itens_solicitados_pcp WHERE cod_orcamento = ?',
+        [cod]
+      )
+    }
+
+    cb(null, { ok: true })
   } catch (err) {
-    cb(err);
+    cb(err)
   }
 }
+
 
 function toYMD(d) {
   const pad = n => String(n).padStart(2, '0');
