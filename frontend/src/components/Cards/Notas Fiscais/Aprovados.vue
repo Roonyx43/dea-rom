@@ -13,7 +13,7 @@ const itensErro = ref('')
 const itensOrcamento = ref([])
 const ticketSelecionado = ref(null)
 
-const API_BASE = 'http://localhost:3000'
+const API_BASE = 'https://dea-rom-production.up.railway.app'
 
 /** ===== helpers de data (mais bonitos) ===== */
 

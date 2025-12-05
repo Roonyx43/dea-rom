@@ -6,7 +6,7 @@ import { triggerTicketsReload, listenTicketsReload } from '../../../composables/
 const ticketsPCP = ref([])
 const loading = ref(false)
 
-const API_BASE = 'http://localhost:3000'
+const API_BASE = 'https://dea-rom-production.up.railway.app'
 
 // estado do modal de itens
 const showItensModal = ref(false)
