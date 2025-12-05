@@ -74,32 +74,18 @@ import { ref } from 'vue'
 
 const router = useRouter()
 
-// Lê permissão salva no login
+
 const permission = ref(localStorage.getItem('dashboardPermission') || '')
 
-/**
- * Mapa de permissões:
- *  - chave: valor da coluna permissoesDashboard no banco
- *  - valor: array com os "ids" dos dashboards que pode ver
- */
 const DASHBOARD_PERMISSIONS = {
-  // Pode ver tudo
+
   d: ['geral', 'fin', 'pedidos-fin', 'aguardando-pcp', 'faturamento'],
   ti: ['geral', 'fin', 'pedidos-fin', 'aguardando-pcp', 'faturamento'],
   c: ['pedidos-fin'],
-
-  // Financeiro apenas
+  pcp: ['aguardando-pcp'],
   fin: ['fin'],
-
-  // 👇 Exemplo de nova permissão:
-  // comercial: ['pedidos-fin'],
-  // pcp: ['aguardando-pcp', 'faturamento'],
 }
 
-/**
- * Função genérica:
- * ela responde se a permissão atual pode ver um dashboard específico
- */
 function canSeeDashboard(dashboardKey) {
   const list = DASHBOARD_PERMISSIONS[permission.value] || []
   return list.includes(dashboardKey)
