@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import Tickets from '../../Ticket/Tickets.vue'
 import { triggerTicketsReload, listenTicketsReload } from '../../../composables/useTicketReload'
 
@@ -14,12 +14,12 @@ const itensLoading = ref(false)
 const itensErro = ref('')
 const itensOrcamento = ref([])
 const ticketSelecionado = ref(null)
+const agendamentoProducao = ref('') // datetime-local do input
 
 function fmt(d, h) {
   if (!d) return ''
   const D = new Date(
-    `${d.substring(0, 10)}T${h ? new Date(h).toTimeString().slice(0, 8) : '00:00:00'
-    }`
+    `${d.substring(0, 10)}T${h ? new Date(h).toTimeString().slice(0, 8) : '00:00:00'}`
   )
   if (isNaN(D)) return ''
   const dd = String(D.getDate()).padStart(2, '0')
@@ -32,6 +32,38 @@ function fmt(d, h) {
 
 function prev(d) {
   return fmt(d).split(' - ')[0]
+}
+
+// '2025-12-09T14:30' => '2025-12-09 14:30:00'
+function toMySQLDateTime(dtLocal) {
+  if (!dtLocal) return null
+  return dtLocal.replace('T', ' ') + ':00'
+}
+
+// para exibir no badge do card
+function fmtAgendamentoLocal(value) {
+  if (!value) return ''
+
+  let d
+
+  if (value instanceof Date) {
+    d = value
+  } else if (typeof value === 'string') {
+    const iso = value.includes('T') ? value : value.replace(' ', 'T')
+    d = new Date(iso)
+  } else {
+    d = new Date(value)
+  }
+
+  if (isNaN(d)) return String(value)
+
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mi = String(d.getMinutes()).padStart(2, '0')
+
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`
 }
 
 async function fetchTickets() {
@@ -57,6 +89,7 @@ async function fetchTickets() {
       region: it.UFCLI || '',
       status: 'Aguardando PCP',
       dias: Number(it.DIAS_STATUS ?? 0),
+      agendamentoProducao: it.agendamento_producao || it.AGENDAMENTO_PRODUCAO || null,
     }))
   } finally {
     loading.value = false
@@ -66,13 +99,33 @@ async function fetchTickets() {
 // abrir modal de itens
 async function abrirItens(ticket) {
   ticketSelecionado.value = ticket
+
+  // se o ticket já tiver agendamento, joga no formato do input
+  if (ticket.agendamentoProducao) {
+    const val = ticket.agendamentoProducao
+
+    if (val instanceof Date) {
+      const yyyy = val.getFullYear()
+      const mm = String(val.getMonth() + 1).padStart(2, '0')
+      const dd = String(val.getDate()).padStart(2, '0')
+      const hh = String(val.getHours()).padStart(2, '0')
+      const mi = String(val.getMinutes()).padStart(2, '0')
+      agendamentoProducao.value = `${yyyy}-${mm}-${dd}T${hh}:${mi}`
+    } else {
+      const raw = String(val)
+      const base = raw.includes('T') ? raw : raw.replace(' ', 'T')
+      agendamentoProducao.value = base.slice(0, 16) // YYYY-MM-DDTHH:MM
+    }
+  } else {
+    agendamentoProducao.value = ''
+  }
+
   showItensModal.value = true
   itensLoading.value = true
   itensErro.value = ''
   itensOrcamento.value = []
 
   try {
-    // 1) Itens do orçamento (ROM) -> cod, descrição, saldo em estoque
     const resItens = await fetch(`${API_BASE}/api/estoque/${ticket.codigo}/itens`)
     const dadosItens = await resItens.json()
 
@@ -82,7 +135,6 @@ async function abrirItens(ticket) {
       return
     }
 
-    // 2) Itens solicitados pelo operador (tabela itens_solicitados_pcp)
     let solicitados = []
     try {
       const resSolic = await fetch(
@@ -99,7 +151,6 @@ async function abrirItens(ticket) {
       console.error('Erro inesperado ao buscar itens solicitados (PCP):', err)
     }
 
-    // 3) Mapa: cod_produto -> quantidade_solicitada
     const mapSolicitados = {}
     for (const row of solicitados) {
       const cod = String(
@@ -109,7 +160,6 @@ async function abrirItens(ticket) {
       mapSolicitados[cod] = Number(row.quantidade_solicitada ?? 0)
     }
 
-    // 4) Monta itens pra tela do PCP
     itensOrcamento.value = (dadosItens || []).map(it => {
       const codProd = String(
         it.codProd ?? it.CODPROD ?? ''
@@ -143,36 +193,124 @@ function fecharModalItens() {
   itensOrcamento.value = []
   ticketSelecionado.value = null
   itensErro.value = ''
+  agendamentoProducao.value = ''
 }
 
-async function voltarParaAprovados(t) {
-  const res = await fetch(`${API_BASE}/api/tickets/${t.codigo}/status`, {
+// 🔐 regra: só pode voltar para aprovados se AGORA >= data/hora agendada
+const podeVoltarParaAprovados = computed(() => {
+  if (!ticketSelecionado.value) return false
+
+  // tenta pegar a data mais confiável:
+  // 1) o que veio do backend (ticketSelecionado.agendamentoProducao)
+  // 2) se não tiver, usa o que está no input (agendamentoProducao)
+  const valor =
+    ticketSelecionado.value.agendamentoProducao || agendamentoProducao.value
+
+  if (!valor) return false
+
+  const raw = String(valor)
+  const iso = raw.includes('T') ? raw : raw.replace(' ', 'T')
+  const dt = new Date(iso)
+  if (isNaN(dt)) return false
+
+  const agora = new Date()
+  return agora.getTime() >= dt.getTime()
+})
+
+// salva só o agendamento e mantém o ticket em "Aguardando PCP"
+async function salvarAgendamento() {
+  if (!ticketSelecionado.value) {
+    console.error('Nenhum ticket selecionado para salvar agendamento.')
+    return
+  }
+
+  const codigo = ticketSelecionado.value.codigo
+  const codCli = ticketSelecionado.value.codCli ?? null
+
+  const agendamentoRaw = agendamentoProducao.value || null
+  const agendamentoProducaoMySQL = agendamentoRaw
+    ? toMySQLDateTime(agendamentoRaw)
+    : null
+
+  if (!agendamentoProducaoMySQL) {
+    alert('Preencha o agendamento de produção antes de salvar.')
+    return
+  }
+
+  const res = await fetch(`${API_BASE}/api/tickets/${codigo}/status`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      status: 'APROVADO', // confere se é esse mesmo no backend
+      status: 'AGUARDANDO_PCP', // mantém o status
       username: 'lofs',
       motivo: null,
+      codCli,
+      agendamento_producao: agendamentoProducaoMySQL,
+    }),
+  })
+
+  const body = await res.json()
+  if (!res.ok) {
+    console.error('Erro ao salvar agendamento de produção:', body)
+    throw new Error(body?.error || 'Falha ao salvar agendamento.')
+  }
+
+  // atualiza o ticket na lista pra já mostrar o badge
+  const idx = ticketsPCP.value.findIndex(x => x.codigo === codigo)
+  if (idx !== -1) {
+    ticketsPCP.value[idx] = {
+      ...ticketsPCP.value[idx],
+      agendamentoProducao: agendamentoRaw,
+    }
+  }
+
+  // também atualiza o ticket selecionado, pra computed usar o mesmo valor
+  if (ticketSelecionado.value) {
+    ticketSelecionado.value = {
+      ...ticketSelecionado.value,
+      agendamentoProducao: agendamentoRaw,
+    }
+  }
+
+  fecharModalItens()
+}
+
+// volta o ticket pra "APROVADO" e limpa agendamento
+async function voltarParaAprovados() {
+  if (!ticketSelecionado.value) {
+    console.error('Nenhum ticket selecionado para voltar para aprovados.')
+    return
+  }
+
+  const codigo = ticketSelecionado.value.codigo
+
+  const res = await fetch(`${API_BASE}/api/tickets/${codigo}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      status: 'APROVADO',
+      username: 'lofs',
+      motivo: null,
+      agendamento_producao: null, // limpa no banco
     }),
   })
 
   const body = await res.json()
   if (!res.ok) {
     console.error('Erro ao voltar para aprovados:', body)
-    throw new Error(body?.error || 'Falha ao mover para Aprovados')
+    throw new Error(body?.error || 'Falha ao mover para Aprovados.')
   }
 
-  // remove do card PCP
-  ticketsPCP.value = ticketsPCP.value.filter(x => x.codigo !== t.codigo)
+  ticketsPCP.value = ticketsPCP.value.filter(x => x.codigo !== codigo)
 
-  // manda recarregar Aprovados
+  fecharModalItens()
+
   triggerTicketsReload('aprovados')
 }
 
 let unsubscribe
 onMounted(() => {
   fetchTickets()
-  // se alguém mover para PCP, recarrega este card
   unsubscribe = listenTicketsReload(['pcp'], () => fetchTickets())
 })
 onBeforeUnmount(() => {
@@ -194,19 +332,34 @@ onBeforeUnmount(() => {
 
     <div
       class="space-y-2 max-h-[30rem] overflow-y-auto scrollbar-thin scrollbar-thumb-yellow-500 scrollbar-track-gray-800 pr-2"
-      style="min-height: 120px">
-      <Tickets v-for="t in ticketsPCP" :key="t.codigo" :ticket="t" color="purple" :days="t.dias"
-        daysPrefix="Aguardando PCP">
+      style="min-height: 120px"
+    >
+      <Tickets
+        v-for="t in ticketsPCP"
+        :key="t.codigo"
+        :ticket="t"
+        color="purple"
+        :days="t.dias"
+        daysPrefix="Aguardando PCP"
+      >
         <template #actions>
-          <button class="px-3 py-1 rounded bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-xs"
-            @click="abrirItens(t)">
-            Itens
-          </button>
+          <div class="flex flex-col items-end gap-1 w-full">
+            <div
+              v-if="t.agendamentoProducao"
+              class="text-[10px] px-2 py-1 rounded bg-emerald-900/60 text-emerald-200 border border-emerald-500/60 text-right"
+            >
+              Produção agendada para: {{ fmtAgendamentoLocal(t.agendamentoProducao) }}
+            </div>
 
-          <button class="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs"
-            @click="voltarParaAprovados(t)">
-            Concluir
-          </button>
+            <div class="flex flex-1 gap-2">
+              <button
+                class="px-3 py-1 rounded bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-xs"
+                @click="abrirItens(t)"
+              >
+                Itens / Agendamento
+              </button>
+            </div>
+          </div>
         </template>
       </Tickets>
     </div>
@@ -223,17 +376,16 @@ onBeforeUnmount(() => {
               </span>
             </h2>
             <p v-if="ticketSelecionado" class="text-xs text-gray-400">
-              Cliente: {{ ticketSelecionado.responsavel }} · Local: {{ ticketSelecionado.local }}
+              Cliente: {{ ticketSelecionado.responsavel }} · Local:
+              {{ ticketSelecionado.local }}
             </p>
           </div>
-          <button class="text-gray-400 hover:text-white text-xl leading-none px-2" @click="fecharModalItens"
-            aria-label="Fechar">
+          <button class="text-gray-400 hover:text-white text-xl leading-none px-2" @click="fecharModalItens" aria-label="Fechar">
             ×
           </button>
         </div>
 
         <div class="p-4 space-y-3">
-          <!-- loading -->
           <div v-if="itensLoading" class="flex items-center gap-2 text-purple-300 text-sm">
             <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
@@ -242,12 +394,13 @@ onBeforeUnmount(() => {
             Carregando itens do orçamento...
           </div>
 
-          <!-- erro -->
-          <div v-else-if="itensErro" class="text-sm text-red-400 bg-red-950/40 border border-red-700 rounded px-3 py-2">
+          <div
+            v-else-if="itensErro"
+            class="text-sm text-red-400 bg-red-950/40 border border-red-700 rounded px-3 py-2"
+          >
             {{ itensErro }}
           </div>
 
-          <!-- tabela -->
           <div v-else>
             <div v-if="itensOrcamento.length === 0" class="text-sm text-gray-400">
               Nenhum item encontrado para este orçamento.
@@ -259,8 +412,12 @@ onBeforeUnmount(() => {
                   <tr>
                     <th class="px-3 py-2 font-medium">Cód. Produto</th>
                     <th class="px-3 py-2 font-medium">Descrição</th>
-                    <th class="px-3 py-2 font-medium text-right">Qtde em estoque</th>
-                    <th class="px-3 py-2 font-medium text-right">Qtde solicitada</th>
+                    <th class="px-3 py-2 font-medium text-right">
+                      Qtde em estoque
+                    </th>
+                    <th class="px-3 py-2 font-medium text-right">
+                      Qtde solicitada
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -269,7 +426,9 @@ onBeforeUnmount(() => {
                     :key="item.codProd"
                     :class="[
                       'transition-colors',
-                      item.qtdSolicitadaOperador > 0 ? 'bg-yellow-900/40' : 'bg-gray-900'
+                      item.qtdSolicitadaOperador > 0
+                        ? 'bg-yellow-900/40'
+                        : 'bg-gray-900',
                     ]"
                   >
                     <td class="px-3 py-2 align-top">
@@ -288,15 +447,16 @@ onBeforeUnmount(() => {
 
                     <td
                       class="px-3 py-2 text-right align-top"
-                      :class="item.qtdSolicitadaOperador > 0
-                        ? 'text-yellow-300 font-semibold'
-                        : 'text-gray-100'"
+                      :class="
+                        item.qtdSolicitadaOperador > 0
+                          ? 'text-yellow-300 font-semibold'
+                          : 'text-gray-100'
+                      "
                     >
                       {{ item.qtdSolicitadaOperador }}
                     </td>
                   </tr>
                 </tbody>
-
               </table>
             </div>
 
@@ -306,11 +466,45 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="flex justify-end gap-2 border-t border-gray-800 px-4 py-3">
-          <button class="px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm text-gray-100"
-            @click="fecharModalItens">
-            Fechar
-          </button>
+        <div
+          class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-t border-gray-800 px-4 py-3"
+        >
+          <div class="flex items-center gap-2 text-xs text-gray-200">
+            <span>Agendamento produção:</span>
+            <input
+              type="datetime-local"
+              v-model="agendamentoProducao"
+              class="bg-gray-900 border border-purple-500 text-xs text-gray-100 rounded px-2 py-1
+                     focus:outline-none focus:ring-1 focus:ring-purple-400"
+            />
+          </div>
+
+          <div class="flex gap-2 justify-end">
+            <button
+              class="px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm text-gray-100"
+              @click="fecharModalItens"
+            >
+              Fechar
+            </button>
+
+            <button
+              class="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-sm text-white
+                     disabled:opacity-50 disabled:cursor-not-allowed"
+              @click="salvarAgendamento"
+              :disabled="!agendamentoProducao"
+            >
+              Salvar agendamento
+            </button>
+
+            <button
+              class="px-4 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-sm text-white
+                     disabled:opacity-50 disabled:cursor-not-allowed"
+              @click="voltarParaAprovados"
+              :disabled="!podeVoltarParaAprovados"
+            >
+              Voltar para aprovados
+            </button>
+          </div>
         </div>
       </div>
     </div>

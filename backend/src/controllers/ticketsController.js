@@ -58,16 +58,16 @@ function fbQuery(sql, params = []) {
 
 async function moverStatusTicket({ codorc, status, username, motivo }, cb) {
   try {
-    const cod = parseInt(codorc, 10)
-    if (!Number.isFinite(cod)) return cb(new Error('codorc inválido'))
+    const cod = parseInt(codorc, 10);
+    if (!Number.isFinite(cod)) return cb(new Error('codorc inválido'));
 
     // Busca CODCLI na Firebird
     const rs = await fbQuery(
       `SELECT FIRST 1 CODCLI FROM VDORCAMENTO WHERE CODEMP=7 AND CODFILIAL=1 AND CODORC=?`,
       [cod]
-    )
-    const row = rs[0]
-    if (!row) return cb(new Error('Orçamento não encontrado'))
+    );
+    const row = rs[0];
+    if (!row) return cb(new Error('Orçamento não encontrado'));
 
     // UPSERT na tickets_dashboard
     const upsert = `
@@ -79,29 +79,28 @@ async function moverStatusTicket({ codorc, status, username, motivo }, cb) {
         updated_at = NOW(),
         username   = VALUES(username),
         motivo     = VALUES(motivo)
-    `
+    `;
     await pool.query(upsert, [
       cod,
       row.CODCLI,
       status,
       username || null,
       motivo || null,
-    ])
+    ]);
 
     // 🔹 Se voltou para APROVADO, limpa os itens solicitados pro PCP
     if (status === 'APROVADO') {
       await pool.query(
         'DELETE FROM itens_solicitados_pcp WHERE cod_orcamento = ?',
         [cod]
-      )
+      );
     }
 
-    cb(null, { ok: true })
+    cb(null, { ok: true });
   } catch (err) {
-    cb(err)
+    cb(err);
   }
 }
-
 
 function toYMD(d) {
   const pad = n => String(n).padStart(2, '0');
@@ -190,7 +189,18 @@ async function fetchItensPorOrcamentosFB(codorcs) {
 async function fetchTDByCodorcsMy(codorcs) {
   if (!Array.isArray(codorcs) || codorcs.length === 0) return [];
   const [rows] = await pool.query(
-    `SELECT codorc, codcli, status, status_at, username, motivo FROM tickets_dashboard WHERE codorc IN (?)`,
+    `
+    SELECT
+      codorc,
+      codcli,
+      status,
+      status_at,
+      username,
+      motivo,
+      agendamento_producao
+    FROM tickets_dashboard
+    WHERE codorc IN (?)
+    `,
     [codorcs]
   );
   return rows || [];
@@ -312,7 +322,7 @@ async function fetchUnificadoOAOCCD(dias) {
             JOIN fnreceber r ON r.codemp=ir.codemp AND r.codfilial=ir.codfilial AND r.codrec=ir.codrec
             JOIN vdcliente vc ON vc.codcli=r.codcli AND vc.codemp=r.codempcl AND vc.codfilial=r.codfilialcl
             WHERE vc.codcli=o.codcli AND vc.codemp=o.codemp And vc.codfilial=o.codfilial
-              AND ir.codemp=o.codemp AND ir.codfilial=o.codfilial
+              AND ir.codemp=o.codemp And ir.codfilial=o.codfilial
               AND ir.statusitrec IN ('R1','RL','RR')
               AND (ir.dtvencitrec + 5) < CURRENT_DATE
               AND EXTRACT(WEEKDAY FROM ir.dtvencitrec) NOT IN (5,6)
@@ -479,7 +489,14 @@ async function listarAguardandoPCP(cb) {
     //    - tem itens na tabela itens_solicitados_pcp
     const [rows] = await pool.query(
       `
-      SELECT td.codorc, td.codcli, td.status, td.username, td.motivo, td.status_at
+      SELECT
+        td.codorc,
+        td.codcli,
+        td.status,
+        td.username,
+        td.motivo,
+        td.status_at,
+        td.agendamento_producao
       FROM tickets_dashboard td
       WHERE td.status = 'AGUARDANDO_PCP'
         AND EXISTS (
@@ -489,22 +506,22 @@ async function listarAguardandoPCP(cb) {
         )
       ORDER BY td.status_at DESC
       `
-    )
+    );
 
-    if (!rows.length) return cb(null, [])
+    if (!rows.length) return cb(null, []);
 
-    const codorcs = rows.map(r => r.codorc)
+    const codorcs = rows.map(r => r.codorc);
 
     // 2) busca detalhes do orçamento na Firebird
-    const detalhes = await fetchOrcamentosByCodorcsFB(codorcs)
-    const map = new Map(detalhes.map(d => [d.CODORC, d]))
+    const detalhes = await fetchOrcamentosByCodorcsFB(codorcs);
+    const map = new Map(detalhes.map(d => [d.CODORC, d]));
 
     // 3) monta saída base
     const outBase = rows.map(t => {
-      const d = map.get(t.codorc) || {}
+      const d = map.get(t.codorc) || {};
       const dias = Math.floor(
         (Date.now() - new Date(t.status_at).getTime()) / 86400000
-      )
+      );
 
       return {
         CODORC: d.CODORC || t.codorc,
@@ -520,22 +537,23 @@ async function listarAguardandoPCP(cb) {
         USERNAME: t.username || null,
         MOTIVO: t.motivo || null,
         DIAS_STATUS: dias,
-      }
-    })
+        AGENDAMENTO_PRODUCAO: t.agendamento_producao || null,
+      };
+    });
 
     // 4) resolve entregador
     const outComEntregador = await Promise.all(
       outBase.map(async (r) => {
         const entregador = await findEntregador(
           r.LOCAL_EXIBICAO || r.BAIRCLI || null
-        )
-        return { ...r, ENTREGADOR: entregador }
+        );
+        return { ...r, ENTREGADOR: entregador };
       })
-    )
+    );
 
-    cb(null, outComEntregador)
+    cb(null, outComEntregador);
   } catch (err) {
-    cb(err)
+    cb(err);
   }
 }
 
