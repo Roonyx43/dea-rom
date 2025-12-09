@@ -237,7 +237,7 @@ async function salvarAgendamento() {
     return
   }
 
-  const res = await fetch(`${API_BASE}/api/tickets/${codigo}/status`, {
+  const res = await fetch(`${API_BASE}/api/estoque/${codigo}/status`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
