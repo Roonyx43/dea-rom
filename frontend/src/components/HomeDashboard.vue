@@ -48,9 +48,9 @@
       <RouterLink
         v-if="canSeeDashboard('aguardando-pcp')"
         to="/dashboards/aguardando-pcp"
-        class="flex flex-col items-center justify-center rounded-2xl border-2 border-red-500 p-8 shadow-lg hover:scale-105 transition transform bg-gray-800"
+        class="flex flex-col items-center justify-center rounded-2xl border-2 border-purple-500 p-8 shadow-lg hover:scale-105 transition transform bg-gray-800"
       >
-        <h3 class="text-2xl font-bold mb-3 text-red-400">Pedidos</h3>
+        <h3 class="text-2xl font-bold mb-3 text-purple-400">Pedidos</h3>
         <p class="text-sm text-gray-300">Aguardando PCP</p>
       </RouterLink>
 
@@ -64,6 +64,15 @@
         <p class="text-sm text-gray-300">Aprovados + Aguardando PCP + Denegados</p>
       </RouterLink>
 
+      <!-- Romaneios -->
+      <RouterLink
+        v-if="canSeeDashboard('romaneios')"
+        to="/dashboards/romaneios"
+        class="flex flex-col items-center justify-center rounded-2xl border-2 border-red-500 p-8 shadow-lg hover:scale-105 transition transform bg-gray-800"
+      >
+        <h3 class="text-2xl font-bold mb-3 text-red-400">Romaneios</h3>
+        <p class="text-sm text-gray-300">Foco total nos romaneios</p>
+      </RouterLink>
     </div>
   </section>
 </template>
@@ -79,11 +88,11 @@ const permission = ref(localStorage.getItem('dashboardPermission') || '')
 
 const DASHBOARD_PERMISSIONS = {
 
-  d: ['geral', 'fin', 'pedidos-fin', 'aguardando-pcp', 'faturamento'],
-  ti: ['geral', 'fin', 'pedidos-fin', 'aguardando-pcp', 'faturamento'],
+  d: ['geral', 'fin', 'pedidos-fin', 'aguardando-pcp', 'faturamento', 'romaneios'],
+  ti: ['geral', 'fin', 'pedidos-fin', 'aguardando-pcp', 'faturamento', 'romaneios'],
   c: ['pedidos-fin'],
   pcp: ['aguardando-pcp'],
-  fin: ['fin'],
+  fin: ['fin']
 }
 
 function canSeeDashboard(dashboardKey) {

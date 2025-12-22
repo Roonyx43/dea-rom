@@ -10,6 +10,7 @@ import DashboardFaturamento from '@/components/Dashboard/DashboardFaturamento.vu
 
 // Login
 import LoginView from '@/components/Login/Login.vue';
+import DashboardRomaneios from '../components/Dashboard/DashboardRomaneios.vue';
 
 const routes = [
   // Login (público)
@@ -55,6 +56,12 @@ const routes = [
     path: '/dashboards/faturamento',
     name: 'dashboard-faturamento',
     component: DashboardFaturamento,
+    meta: { requiresAuth: true },
+  },
+    {
+    path: '/dashboards/romaneios',
+    name: 'dashboard-romaneios',
+    component: DashboardRomaneios,
     meta: { requiresAuth: true },
   },
 ];

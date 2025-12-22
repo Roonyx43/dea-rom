@@ -7,34 +7,36 @@ async function findEntregador(localExibicao) {
   const localRaw = localExibicao || '';
   const local = localRaw.trim();
 
-  if (!local) {
-    return 'Transportadora';
-  }
+  if (!local) return 'Transportadora';
 
-  // 1) tenta como BAIRRO (normalizando dos dois lados)
+  // 1) tenta como BAIRRO
   const [rowsBairro] = await pool.query(
     `
-      SELECT entregador
-      FROM entregador_bairro
-      WHERE UPPER(TRIM(bairro)) = UPPER(?)
+      SELECT e.nome AS entregador
+      FROM entregador_bairro eb
+      JOIN entregadores e ON e.id = eb.entregador_id
+      WHERE UPPER(TRIM(eb.bairro)) = UPPER(?)
       LIMIT 1
     `,
     [local]
   );
+
   if (rowsBairro.length) {
     return rowsBairro[0].entregador;
   }
 
-  // 2) se não achou, tenta como CIDADE
+  // 2) tenta como CIDADE
   const [rowsCidade] = await pool.query(
     `
-      SELECT entregador
-      FROM entregador_bairro
-      WHERE UPPER(TRIM(cidade)) = UPPER(?)
+      SELECT e.nome AS entregador
+      FROM entregador_bairro eb
+      JOIN entregadores e ON e.id = eb.entregador_id
+      WHERE UPPER(TRIM(eb.cidade)) = UPPER(?)
       LIMIT 1
     `,
     [local]
   );
+
   if (rowsCidade.length) {
     return rowsCidade[0].entregador;
   }
