@@ -42,11 +42,11 @@ async function update(req, res) {
 
 // DELETE /api/entregadores/:id  (remove lógico: desativa)
 async function disable(req, res) {
-  const id = Number(req.params.id);
-  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const id = Number(req.params.id)
+  if (!id) return res.status(400).json({ error: 'ID inválido' })
 
-  await pool.query(`UPDATE entregadores SET ativo=0 WHERE id=?`, [id]);
-  res.json({ ok: true });
+  await pool.query(`UPDATE entregadores SET ativo=0 WHERE id=?`, [id])
+  res.json({ ok: true })
 }
 
 // GET /api/entregadores/:id/locais
@@ -129,17 +129,24 @@ async function addLocal(req, res) {
   res.json({ ok: true, id: r.insertId });
 }
 
-async function removePermanent(req, res) {
-  const id = Number(req.params.id);
-  if (!id) return res.status(400).json({ error: 'ID inválido' });
+async function remove(req, res) {
+  const id = Number(req.params.id)
+  if (!id) return res.status(400).json({ error: 'ID inválido' })
 
-  // Primeiro remove locais (senão FK bloqueia)
-  await pool.query(`DELETE FROM entregador_bairro WHERE entregador_id=?`, [id]);
+  try {
+    // 1) apaga locais primeiro (pra não bater no FK)
+    await pool.query(`DELETE FROM entregador_bairro WHERE entregador_id=?`, [id])
 
-  // Agora remove o entregador
-  await pool.query(`DELETE FROM entregadores WHERE id=?`, [id]);
+    // 2) apaga entregador
+    await pool.query(`DELETE FROM entregadores WHERE id=?`, [id])
 
-  res.json({ ok: true });
+    res.json({ ok: true })
+  } catch (e) {
+    // Se ainda tiver FK travando por algum motivo
+    return res.status(409).json({
+      error: 'Não foi possível excluir: existem vínculos com esse entregador.',
+    })
+  }
 }
 
 // DELETE /api/entregadores/:id/locais/:localId
@@ -164,7 +171,7 @@ module.exports = {
   create,
   update,
   disable,
-  removePermanent,
+  remove,
   listLocais,
   addLocal,
   removeLocal,

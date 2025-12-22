@@ -1,14 +1,19 @@
-const router = require('express').Router();
-const c = require('../controllers/entregadoresController');
+// routes/entregadoresRoutes.js
+const router = require('express').Router()
+const c = require('../controllers/entregadoresController')
 
-router.get('/', c.list);
-router.post('/', c.create);
-router.put('/:id', c.update);
-router.delete('/:id', c.disable);
-router.delete('/:id/permanente', c.removePermanent);
+router.get('/', c.list)
+router.post('/', c.create)
+router.put('/:id', c.update)
 
-router.get('/:id/locais', c.listLocais);
-router.post('/:id/locais', c.addLocal);
-router.delete('/:id/locais/:localId', c.removeLocal);
+// ✅ desativar separado
+router.patch('/:id/disable', c.disable)
 
-module.exports = router;
+// ✅ excluir de verdade
+router.delete('/:id', c.remove)
+
+router.get('/:id/locais', c.listLocais)
+router.post('/:id/locais', c.addLocal)
+router.delete('/:id/locais/:localId', c.removeLocal)
+
+module.exports = router
