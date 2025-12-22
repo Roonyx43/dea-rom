@@ -66,19 +66,21 @@ async function listLocais(req, res) {
 }
 
 // POST /api/entregadores/:id/locais
+// POST /api/entregadores/:id/locais
 async function addLocal(req, res) {
   const entregadorId = Number(req.params.id);
   if (!entregadorId) return res.status(400).json({ error: 'ID inválido' });
 
   const uf = String(req.body?.uf || '').trim().toUpperCase() || null;
   const cidade = String(req.body?.cidade || '').trim();
-  const bairro = String(req.body?.bairro || '').trim() || null;
+  const bairroRaw = String(req.body?.bairro || '').trim();
+  const bairro = bairroRaw ? bairroRaw : null;
 
   if (!cidade) return res.status(400).json({ error: 'Cidade é obrigatória' });
   if (uf && uf.length !== 2) return res.status(400).json({ error: 'UF inválida' });
 
-  // evita duplicado (mesmo entregador + uf + cidade + bairro)
-  const [exists] = await pool.query(
+  // 1) evita duplicado para o MESMO entregador (igual você já fazia)
+  const [existsSame] = await pool.query(
     `SELECT id
      FROM entregador_bairro
      WHERE entregador_id=?
@@ -89,8 +91,35 @@ async function addLocal(req, res) {
     [entregadorId, uf, cidade, bairro]
   );
 
-  if (exists.length) return res.status(409).json({ error: 'Local já existe para esse entregador' });
+  if (existsSame.length) {
+    return res.status(409).json({ error: 'Local já existe para esse entregador' });
+  }
 
+  // 2) ✅ NOVO: bloqueia bairro repetido entre entregadores diferentes
+  // Só aplica se bairro foi preenchido
+  if (bairro) {
+    const [conflict] = await pool.query(
+      `SELECT eb.id, e.id AS entregador_id, e.nome AS entregador_nome
+       FROM entregador_bairro eb
+       JOIN entregadores e ON e.id = eb.entregador_id
+       WHERE eb.entregador_id <> ?
+         AND COALESCE(eb.uf,'') = COALESCE(?, '')
+         AND UPPER(TRIM(eb.cidade)) = UPPER(TRIM(?))
+         AND UPPER(TRIM(eb.bairro)) = UPPER(TRIM(?))
+       LIMIT 1`,
+      [entregadorId, uf, cidade, bairro]
+    );
+
+    if (conflict.length) {
+      return res.status(409).json({
+        error: 'Bairro já está associado a outro entregador',
+        entregador: conflict[0].entregador_nome,
+        entregadorId: conflict[0].entregador_id,
+      });
+    }
+  }
+
+  // 3) insere
   const [r] = await pool.query(
     `INSERT INTO entregador_bairro (entregador_id, uf, cidade, bairro)
      VALUES (?, ?, ?, ?)`,
@@ -98,6 +127,19 @@ async function addLocal(req, res) {
   );
 
   res.json({ ok: true, id: r.insertId });
+}
+
+async function removePermanent(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+  // Primeiro remove locais (senão FK bloqueia)
+  await pool.query(`DELETE FROM entregador_bairro WHERE entregador_id=?`, [id]);
+
+  // Agora remove o entregador
+  await pool.query(`DELETE FROM entregadores WHERE id=?`, [id]);
+
+  res.json({ ok: true });
 }
 
 // DELETE /api/entregadores/:id/locais/:localId
@@ -122,6 +164,7 @@ module.exports = {
   create,
   update,
   disable,
+  removePermanent,
   listLocais,
   addLocal,
   removeLocal,

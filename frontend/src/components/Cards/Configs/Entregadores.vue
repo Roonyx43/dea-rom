@@ -1,9 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 
 const API_BASE = 'https://dea-rom-production.up.railway.app'
 
-// lista entregadores
+// ===== state =====
 const entregadores = ref([])
 const loadingEnt = ref(false)
 const erroEnt = ref('')
@@ -13,10 +13,8 @@ const selecionado = computed(() =>
   entregadores.value.find(e => e.id === selectedId.value) || null
 )
 
-// form entregador
 const nomeNovo = ref('')
 
-// locais do entregador selecionado
 const locais = ref([])
 const loadingLocais = ref(false)
 const erroLocais = ref('')
@@ -25,20 +23,85 @@ const uf = ref('')
 const cidade = ref('')
 const bairro = ref('')
 
+// ===== filtros (UF / Cidade) =====
+const filtroUF = ref('all')
+const filtroCidade = ref('all')
+
+// lista de UFs disponíveis nos locais carregados
+const ufsDisponiveis = computed(() => {
+  const set = new Set()
+  for (const l of locais.value || []) {
+    const v = (l.uf || '').trim()
+    if (v) set.add(v)
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b))
+})
+
+// lista de cidades disponíveis, respeitando filtro de UF
+const cidadesDisponiveis = computed(() => {
+  const set = new Set()
+
+  for (const l of locais.value || []) {
+    const ufOk = filtroUF.value === 'all' || (String(l.uf || '').trim() === filtroUF.value)
+    if (!ufOk) continue
+
+    const v = (l.cidade || '').trim()
+    if (v) set.add(v)
+  }
+
+  return Array.from(set).sort((a, b) => a.localeCompare(b))
+})
+
+// locais filtrados (UF + Cidade)
+const locaisFiltrados = computed(() => {
+  return (locais.value || []).filter(l => {
+    const ufOk =
+      filtroUF.value === 'all' ||
+      String(l.uf || '').trim() === filtroUF.value
+
+    const cidadeOk =
+      filtroCidade.value === 'all' ||
+      String(l.cidade || '').trim() === filtroCidade.value
+
+    return ufOk && cidadeOk
+  })
+})
+
+// quando muda a UF, se a cidade selecionada não existe mais, reseta
+watch(filtroUF, () => {
+  if (filtroCidade.value === 'all') return
+  const existe = cidadesDisponiveis.value.includes(filtroCidade.value)
+  if (!existe) filtroCidade.value = 'all'
+})
+
+// ===== helpers =====
+function normalizeEntregadores(data) {
+  return Array.isArray(data) ? data : []
+}
+
+function normalizeLocais(data) {
+  return Array.isArray(data) ? data : []
+}
+
+// ===== requests =====
 async function fetchEntregadores() {
   loadingEnt.value = true
   erroEnt.value = ''
+
   try {
     const res = await fetch(`${API_BASE}/api/entregadores`)
-    const data = await res.json()
+    const data = await res.json().catch(() => ([]))
     if (!res.ok) throw new Error(data?.error || 'Erro ao buscar entregadores')
-    entregadores.value = Array.isArray(data) ? data : []
+
+    entregadores.value = normalizeEntregadores(data)
+
+    // se não tem selecionado, escolhe o primeiro
     if (!selectedId.value && entregadores.value[0]?.id) {
       selectedId.value = entregadores.value[0].id
       await fetchLocais()
     }
   } catch (e) {
-    erroEnt.value = e.message || 'Erro inesperado'
+    erroEnt.value = e?.message || 'Erro inesperado'
     entregadores.value = []
   } finally {
     loadingEnt.value = false
@@ -48,18 +111,26 @@ async function fetchEntregadores() {
 async function fetchLocais() {
   if (!selectedId.value) {
     locais.value = []
+    filtroUF.value = 'all'
+    filtroCidade.value = 'all'
     return
   }
 
   loadingLocais.value = true
   erroLocais.value = ''
+
   try {
     const res = await fetch(`${API_BASE}/api/entregadores/${selectedId.value}/locais`)
-    const data = await res.json()
+    const data = await res.json().catch(() => ([]))
     if (!res.ok) throw new Error(data?.error || 'Erro ao buscar locais')
-    locais.value = Array.isArray(data) ? data : []
+
+    locais.value = normalizeLocais(data)
+
+    // reset filtros ao trocar entregador
+    filtroUF.value = 'all'
+    filtroCidade.value = 'all'
   } catch (e) {
-    erroLocais.value = e.message || 'Erro inesperado'
+    erroLocais.value = e?.message || 'Erro inesperado'
     locais.value = []
   } finally {
     loadingLocais.value = false
@@ -77,6 +148,7 @@ async function criarEntregador() {
   })
 
   const body = await res.json().catch(() => ({}))
+
   if (!res.ok) {
     alert(body?.error || 'Erro ao criar entregador')
     return
@@ -90,10 +162,14 @@ async function toggleAtivo(ent) {
   const res = await fetch(`${API_BASE}/api/entregadores/${ent.id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nome: ent.nome, ativo: !ent.ativo }),
+    body: JSON.stringify({
+      nome: ent.nome,
+      ativo: !ent.ativo,
+    }),
   })
 
   const body = await res.json().catch(() => ({}))
+
   if (!res.ok) {
     alert(body?.error || 'Erro ao atualizar')
     return
@@ -102,11 +178,17 @@ async function toggleAtivo(ent) {
   await fetchEntregadores()
 }
 
-async function removerEntregador(ent) {
+// OBS: seu DELETE /api/entregadores/:id é DESATIVAR (ativo=0)
+// então vamos deixar isso bem claro no nome e no texto
+async function desativarEntregador(ent) {
   if (!confirm(`Desativar "${ent.nome}"?`)) return
 
-  const res = await fetch(`${API_BASE}/api/entregadores/${ent.id}`, { method: 'DELETE' })
+  const res = await fetch(`${API_BASE}/api/entregadores/${ent.id}`, {
+    method: 'DELETE',
+  })
+
   const body = await res.json().catch(() => ({}))
+
   if (!res.ok) {
     alert(body?.error || 'Erro ao desativar')
     return
@@ -136,8 +218,14 @@ async function adicionarLocal() {
   })
 
   const body = await res.json().catch(() => ({}))
+
   if (!res.ok) {
-    alert(body?.error || 'Erro ao adicionar local')
+    // se seu backend devolver 409 quando bairro/cidade/uf já estiver com outro entregador:
+    if (res.status === 409 && body?.entregador) {
+      alert(`${body.error}. Já está com: ${body.entregador}`)
+    } else {
+      alert(body?.error || 'Erro ao adicionar local')
+    }
     return
   }
 
@@ -149,14 +237,18 @@ async function adicionarLocal() {
 
 async function removerLocal(localId) {
   if (!selectedId.value) return
+
   const res = await fetch(`${API_BASE}/api/entregadores/${selectedId.value}/locais/${localId}`, {
     method: 'DELETE',
   })
+
   const body = await res.json().catch(() => ({}))
+
   if (!res.ok) {
     alert(body?.error || 'Erro ao remover local')
     return
   }
+
   await fetchLocais()
 }
 
@@ -184,7 +276,10 @@ onMounted(() => {
       </svg>
     </div>
 
-    <div v-if="erroEnt" class="text-sm text-red-300 bg-red-950/40 border border-red-700 rounded px-3 py-2 mb-3">
+    <div
+      v-if="erroEnt"
+      class="text-sm text-red-300 bg-red-950/40 border border-red-700 rounded px-3 py-2 mb-3"
+    >
       {{ erroEnt }}
     </div>
 
@@ -205,7 +300,9 @@ onMounted(() => {
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- lista entregadores -->
-      <div class="space-y-2 max-h-[24rem] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-emerald-500 scrollbar-track-gray-800">
+      <div
+        class="space-y-2 max-h-[24rem] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-emerald-500 scrollbar-track-gray-800"
+      >
         <button
           v-for="e in entregadores"
           :key="e.id"
@@ -226,11 +323,14 @@ onMounted(() => {
               >
                 {{ e.ativo ? 'Desativar' : 'Ativar' }}
               </button>
+
+              <!-- aqui é DESATIVAR (DELETE) -->
               <button
+                v-if="e.ativo"
                 class="px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white text-xs"
-                @click.stop="removerEntregador(e)"
+                @click.stop="desativarEntregador(e)"
               >
-                Remover
+                Desativar
               </button>
             </div>
           </div>
@@ -251,7 +351,10 @@ onMounted(() => {
           </svg>
         </div>
 
-        <div v-if="erroLocais" class="text-xs text-red-300 bg-red-950/40 border border-red-700 rounded px-2 py-1 mb-2">
+        <div
+          v-if="erroLocais"
+          class="text-xs text-red-300 bg-red-950/40 border border-red-700 rounded px-2 py-1 mb-2"
+        >
           {{ erroLocais }}
         </div>
 
@@ -273,6 +376,7 @@ onMounted(() => {
             class="bg-gray-950 text-gray-100 rounded px-2 py-2 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             placeholder="Bairro (opcional)"
           />
+
           <button
             class="md:col-span-3 px-3 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-sm"
             @click="adicionarLocal"
@@ -281,18 +385,44 @@ onMounted(() => {
           </button>
         </div>
 
+        <!-- filtros -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+          <select
+            v-model="filtroUF"
+            class="bg-gray-950 text-gray-100 rounded px-2 py-2 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          >
+            <option value="all">Todas as UFs</option>
+            <option v-for="u in ufsDisponiveis" :key="u" :value="u">
+              {{ u }}
+            </option>
+          </select>
+
+          <select
+            v-model="filtroCidade"
+            class="bg-gray-950 text-gray-100 rounded px-2 py-2 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          >
+            <option value="all">Todas as cidades</option>
+            <option v-for="c in cidadesDisponiveis" :key="c" :value="c">
+              {{ c }}
+            </option>
+          </select>
+        </div>
+
         <div v-if="!selecionado" class="text-sm text-gray-400">
           Selecione um entregador na lista.
         </div>
 
-        <div v-else-if="locais.length === 0" class="text-sm text-gray-400">
-          Nenhum local cadastrado.
+        <div v-else-if="locaisFiltrados.length === 0" class="text-sm text-gray-400">
+          Nenhum local encontrado com esses filtros.
           <div class="text-xs mt-1">
             Dica: para cobrir a cidade inteira, deixe o <b>bairro</b> vazio.
           </div>
         </div>
 
-        <div v-else class="max-h-[16rem] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-emerald-500 scrollbar-track-gray-800">
+        <div
+          v-else
+          class="max-h-[16rem] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-emerald-500 scrollbar-track-gray-800"
+        >
           <table class="min-w-full text-xs text-left text-gray-200">
             <thead class="sticky top-0 bg-gray-900">
               <tr>
@@ -303,8 +433,8 @@ onMounted(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="l in locais" :key="l.id" class="border-t border-gray-800">
-                <td class="px-2 py-2">{{ l.uf || '-' }}</td>
+              <tr v-for="l in locaisFiltrados" :key="l.id" class="border-t border-gray-800">
+                <td class="px-2 py-2">{{ (l.uf || '').trim() || '-' }}</td>
                 <td class="px-2 py-2">{{ (l.cidade || '').trim() }}</td>
                 <td class="px-2 py-2">{{ (l.bairro || '').trim() || '-' }}</td>
                 <td class="px-2 py-2 text-right">
