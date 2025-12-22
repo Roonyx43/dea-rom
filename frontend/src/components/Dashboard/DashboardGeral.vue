@@ -20,11 +20,14 @@
 
       <!-- Coluna: Não autorizada -->
       <NaoAutorizada />
+
     </div>
+    
   </section>
 </template>
 
 <script setup>
+import Entregadores from '../Cards/Configs/Entregadores.vue';
 import AguardandoPCP from '../Cards/Notas Fiscais/AguardandoPCP.vue';
 import Aprovados from '../Cards/Notas Fiscais/Aprovados.vue';
 import NaoAutorizada from '../Cards/Notas Fiscais/NaoAutorizada.vue';

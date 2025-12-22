@@ -7,10 +7,14 @@ import DashboardFin from '@/components/Dashboard/DashboardFinanceiro.vue';
 import DashboardPedidosFin from '@/components/Dashboard/DashboardComercial.vue';
 import DashboardAguardandoPCP from '@/components/Dashboard/DashboardAguardandoPCP.vue';
 import DashboardFaturamento from '@/components/Dashboard/DashboardFaturamento.vue';
+import DashboardRomaneios from '@/components/Dashboard/DashboardRomaneios.vue';
+
+// ✅ Configs (novos)
+import DashboardConfig from '@/components/Dashboard/DashboardConfig.vue';
+import DashboardEntregadoresConfig from '@/components/Dashboard/Configs/DashboardEntregadoresConfig.vue';
 
 // Login
 import LoginView from '@/components/Login/Login.vue';
-import DashboardRomaneios from '../components/Dashboard/DashboardRomaneios.vue';
 
 const routes = [
   // Login (público)
@@ -58,10 +62,24 @@ const routes = [
     component: DashboardFaturamento,
     meta: { requiresAuth: true },
   },
-    {
+  {
     path: '/dashboards/romaneios',
     name: 'dashboard-romaneios',
     component: DashboardRomaneios,
+    meta: { requiresAuth: true },
+  },
+
+  // ✅ Configurações (protegidas)
+  {
+    path: '/dashboards/config',
+    name: 'dashboard-config',
+    component: DashboardConfig,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/dashboards/config/entregadores',
+    name: 'dashboard-config-entregadores',
+    component: DashboardEntregadoresConfig,
     meta: { requiresAuth: true },
   },
 ];
