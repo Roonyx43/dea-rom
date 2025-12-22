@@ -1,6 +1,6 @@
 // controllers/tabelaController.js
-const { withDbActive } = require('../config/db');
-const { pool } = require('../config/mysql');
+const { withDbActive } = require("../config/db");
+const { pool } = require("../config/mysql");
 
 // 🔒 NÃO ALTERE A QUERY: exatamente como você mandou
 const QUERY_ORCAMENTOS = `
@@ -122,19 +122,21 @@ const QUERY_ORCAMENTOS = `
 `;
 
 // helper pra pegar entregador a partir do "local" (bairro/cidade)
+// helper pra pegar entregador a partir do "local" (bairro/cidade)
 async function findEntregadorByLocal(localExibicao, bairCli) {
-  const raw = localExibicao || bairCli || '';
-  const local = raw.trim();
+  const raw = localExibicao || bairCli || "";
+  const local = String(raw).trim();
 
-  if (!local) return 'Transportadora';
+  if (!local) return "Transportadora";
 
-  // tenta bater com BAIRRO ou CIDADE na mesma tabela
+  // tenta bater com BAIRRO ou CIDADE na mesma tabela (agora com JOIN)
   const [rows] = await pool.query(
     `
-      SELECT entregador
-      FROM entregador_bairro
-      WHERE UPPER(TRIM(bairro)) = UPPER(?)
-         OR UPPER(TRIM(cidade)) = UPPER(?)
+      SELECT e.nome AS entregador
+      FROM entregador_bairro eb
+      JOIN entregadores e ON e.id = eb.entregador_id
+      WHERE UPPER(TRIM(eb.bairro)) = UPPER(?)
+         OR UPPER(TRIM(eb.cidade)) = UPPER(?)
       LIMIT 1
     `,
     [local, local]
@@ -144,7 +146,7 @@ async function findEntregadorByLocal(localExibicao, bairCli) {
     return rows[0].entregador;
   }
 
-  return 'Transportadora';
+  return "Transportadora";
 }
 
 function buscarOrcamentosUnificadoPorDias(_ignored, cb) {
@@ -175,12 +177,16 @@ function buscarOrcamentosUnificadoPorDias(_ignored, cb) {
 
           return cb(null, enriquecidos);
         } catch (errEnt) {
-          console.error('Erro ao buscar entregadores (tabelaController):', errEnt);
-          // fallback: devolve sem ENTREGADOR se der erro no MySQL
+          console.error(
+            "Erro ao buscar entregadores (tabelaController):",
+            errEnt?.message || errEnt
+          );
           return cb(null, base);
         }
       } finally {
-        try { db.detach(); } catch (_) {}
+        try {
+          db.detach();
+        } catch (_) {}
       }
     });
   });
@@ -190,9 +196,10 @@ function buscarOrcamentosUnificadoPorDias(_ignored, cb) {
 function buscarCadastradosPorDias(_ignored, cb) {
   buscarOrcamentosUnificadoPorDias(null, (err, rows) => {
     if (err) return cb(err);
-    const out = (rows || []).filter(r =>
-      String(r.STATUS_CLIENTE).trim() === 'Liberado' &&
-      (Number(r.CODTIPOMOV) === 600 || Number(r.CODTIPOMOV) === 660)
+    const out = (rows || []).filter(
+      (r) =>
+        String(r.STATUS_CLIENTE).trim() === "Liberado" &&
+        (Number(r.CODTIPOMOV) === 600 || Number(r.CODTIPOMOV) === 660)
     );
     cb(null, out);
   });
@@ -202,9 +209,10 @@ function buscarCadastradosPorDias(_ignored, cb) {
 function buscarAguardandoFinanceiroPorDias(_ignored, cb) {
   buscarOrcamentosUnificadoPorDias(null, (err, rows) => {
     if (err) return cb(err);
-    const out = (rows || []).filter(r =>
-      String(r.STATUS_CLIENTE).trim() === 'Bloqueado' &&
-      Number(r.CODTIPOMOV) === 600
+    const out = (rows || []).filter(
+      (r) =>
+        String(r.STATUS_CLIENTE).trim() === "Bloqueado" &&
+        Number(r.CODTIPOMOV) === 600
     );
     cb(null, out);
   });

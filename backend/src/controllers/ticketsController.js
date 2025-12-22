@@ -658,6 +658,7 @@ async function listarAguardandoFinanceiro(dias, cb) {
 }
 
 module.exports = {
+  findEntregador,
   moverStatusTicket,
   listarAprovados,
   listarAguardandoPCP,
