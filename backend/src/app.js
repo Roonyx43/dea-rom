@@ -25,6 +25,7 @@ app.use('/api/tickets', require('./routes/ticketsRoutes'));
 app.use('/api/tabela',  require('./routes/tabelaRoutes'));
 app.use('/api/estoque', require('./routes/estoqueRoutes'));
 app.use('/api/entregadores', require('./routes/entregadoresRoutes'))
+app.use('/api/dashboard-vendas', require('./routes/DashboardVendasRoutes'));
 
 // 404 e erro central
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));

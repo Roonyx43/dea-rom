@@ -13,6 +13,8 @@ import DashboardRomaneios from '@/components/Dashboard/DashboardRomaneios.vue';
 import DashboardConfig from '@/components/Dashboard/DashboardConfig.vue';
 import DashboardEntregadoresConfig from '@/components/Dashboard/Configs/DashboardEntregadoresConfig.vue';
 
+import DashboardSocketTest from '../components/Dashboard/DashboardsVendas/DashboardVendas.vue';
+
 // Login
 import LoginView from '@/components/Login/Login.vue';
 
@@ -67,6 +69,13 @@ const routes = [
     name: 'dashboard-romaneios',
     component: DashboardRomaneios,
     meta: { requiresAuth: true },
+  },
+
+  {
+    path: '/dashboards/test',
+    name: 'dashboard-test',
+    component: DashboardSocketTest,
+    meta: { requiresAuth: false },
   },
 
   // ✅ Configurações (protegidas)
