@@ -72,8 +72,8 @@ const routes = [
   },
 
   {
-    path: '/dashboards/test',
-    name: 'dashboard-test',
+    path: '/dashboards/vendas',
+    name: 'dashboard-vendas',
     component: DashboardSocketTest,
     meta: { requiresAuth: false },
   },

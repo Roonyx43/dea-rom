@@ -54,11 +54,20 @@
       </RouterLink>
 
       <!-- Configurações -->
+      <RouterLink v-if="canSeeDashboard('vendas')" to="/dashboards/vendas"
+        class="flex flex-col items-center justify-center rounded-2xl border-2 border-blue-500 p-8 shadow-lg hover:scale-105 transition transform bg-gray-800">
+        <h3 class="text-2xl font-bold mb-3 text-blue-400">Vendas</h3>
+        <p class="text-sm text-gray-300">Dashboard de vendas</p>
+      </RouterLink>
+
+      <!-- Configurações -->
       <RouterLink v-if="canSeeDashboard('config')" to="/dashboards/config"
         class="flex flex-col items-center justify-center rounded-2xl border-2 border-emerald-500 p-8 shadow-lg hover:scale-105 transition transform bg-gray-800">
         <h3 class="text-2xl font-bold mb-3 text-emerald-400">Configurações</h3>
         <p class="text-sm text-gray-300">Entregadores, Estoque e mais…</p>
       </RouterLink>
+
+      
     </div>
   </section>
 </template>
@@ -73,8 +82,8 @@ const router = useRouter()
 const permission = ref(localStorage.getItem('dashboardPermission') || '')
 
 const DASHBOARD_PERMISSIONS = {
-  d: ['geral', 'fin', 'pedidos-fin', 'aguardando-pcp', 'faturamento', 'romaneios', 'config'],
-  ti: ['geral', 'fin', 'pedidos-fin', 'aguardando-pcp', 'faturamento', 'romaneios', 'config'],
+  d: ['geral', 'fin', 'pedidos-fin', 'aguardando-pcp', 'faturamento', 'romaneios', 'vendas', 'config'],
+  ti: ['geral', 'fin', 'pedidos-fin', 'aguardando-pcp', 'faturamento', 'romaneios', 'vendas', 'config'],
   c: ['pedidos-fin'],
   pcp: ['aguardando-pcp'],
   fin: ['fin']
