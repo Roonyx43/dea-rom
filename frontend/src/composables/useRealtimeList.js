@@ -1,3 +1,4 @@
+// composables/useRealtimeList.js
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { io } from 'socket.io-client'
 
@@ -7,16 +8,13 @@ export function useRealtimeList({ endpoint, eventName, mapFn, sortFn }) {
   let socket
 
   const apply = (rows = []) => {
-    const mapped = rows.map(mapFn)
+    const mapped = (rows || []).map(mapFn)
     items.value = sortFn ? mapped.sort(sortFn) : mapped
   }
 
-  // 🔒 Força localhost SEMPRE
   const API_BASE = 'https://dea-rom-production.up.railway.app'
   const SOCKET_URL = API_BASE
 
-  // Normaliza o endpoint para virar apenas o path
-  // (se vier absoluto, pegamos só o pathname; se vier relativo, usamos como está)
   const toLocalUrl = (ep) => {
     try {
       if (ep.startsWith('http')) {
@@ -24,7 +22,6 @@ export function useRealtimeList({ endpoint, eventName, mapFn, sortFn }) {
         return `${API_BASE}${u.pathname}${u.search || ''}`
       }
     } catch (_) {}
-    // garante a barra inicial
     const path = ep.startsWith('/') ? ep : `/${ep}`
     return `${API_BASE}${path}`
   }
@@ -33,12 +30,15 @@ export function useRealtimeList({ endpoint, eventName, mapFn, sortFn }) {
     loading.value = true
     try {
       const url = toLocalUrl(endpoint)
-      const res = await fetch(url, {
-        credentials: 'include', // mantenho; se não precisar cookies, pode remover
-      })
+      const res = await fetch(url, { credentials: 'include' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       apply(Array.isArray(data) ? data : [])
+      console.log(
+        `📦 [fetch snapshot] ${eventName} ->`,
+        Array.isArray(data) ? data.length : 0,
+        'itens'
+      )
     } catch (e) {
       console.error(`[realtime] falha fetch ${endpoint}:`, e)
       items.value = []
@@ -52,7 +52,7 @@ export function useRealtimeList({ endpoint, eventName, mapFn, sortFn }) {
 
     socket = io(SOCKET_URL, {
       path: '/socket.io',
-      transports: ['websocket'], // já que é local, dá pra manter só WS
+      transports: ['websocket', 'polling'],
       withCredentials: true,
       autoConnect: true,
       reconnection: true,
@@ -63,15 +63,31 @@ export function useRealtimeList({ endpoint, eventName, mapFn, sortFn }) {
     })
 
     socket.on('connect', () => {
-      console.log('[socket] conectado', socket.id)
+      console.log(`✅ [socket conectado] ${eventName} | id:`, socket.id)
     })
-    socket.on('connect_error', (err) => {
-      console.error('[socket] connect_error', err?.message || err)
-    })
-    socket.on('reconnect_attempt', (n) => console.log('[socket] tentando reconectar', n))
-    socket.on('reconnect_failed', () => console.warn('[socket] reconexão falhou'))
 
-    socket.on(eventName, (rows) => apply(rows || []))
+    socket.on('disconnect', (reason) => {
+      console.warn(`❌ [socket desconectou] ${eventName} | motivo:`, reason)
+    })
+
+    socket.on('connect_error', (err) => {
+      console.error(`⚠️ [socket connect_error] ${eventName}:`, err?.message || err)
+    })
+
+    // 🔎 Mostra qualquer evento que chegar
+    socket.onAny((evt) => {
+      console.log(`📡 [socket onAny] (${eventName}) chegou evento:`, evt)
+    })
+
+    // ✅ Evento esperado
+    socket.on(eventName, (rows) => {
+      console.log(
+        `🔄 [Realtime Update] ${eventName} às ${new Date().toLocaleTimeString()} ->`,
+        Array.isArray(rows) ? rows.length : 0,
+        'itens'
+      )
+      apply(rows || [])
+    })
   }
 
   const stop = () => {
@@ -79,12 +95,14 @@ export function useRealtimeList({ endpoint, eventName, mapFn, sortFn }) {
     socket.off(eventName)
     socket.disconnect()
     socket = null
+    console.log(`🧹 [socket stop] ${eventName}`)
   }
 
   onMounted(async () => {
-    await fetchOnce() // snapshot inicial
-    start()           // realtime
+    await fetchOnce()
+    start()
   })
+
   onBeforeUnmount(stop)
 
   return { items, loading }

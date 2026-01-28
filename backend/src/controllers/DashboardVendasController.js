@@ -222,5 +222,5 @@ class DashboardVendasController {
     }
   }
 }
-
+ 
 module.exports = new DashboardVendasController();
