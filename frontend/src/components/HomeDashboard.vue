@@ -67,7 +67,7 @@
         <p class="text-sm text-gray-300">Entregadores, Estoque e mais…</p>
       </RouterLink>
 
-      
+
     </div>
   </section>
 </template>
@@ -86,7 +86,8 @@ const DASHBOARD_PERMISSIONS = {
   ti: ['geral', 'fin', 'pedidos-fin', 'aguardando-pcp', 'faturamento', 'romaneios', 'vendas', 'config'],
   c: ['pedidos-fin'],
   pcp: ['aguardando-pcp'],
-  fin: ['fin']
+  fin: ['fin'],
+  exp: ['faturamento']
 }
 
 function canSeeDashboard(dashboardKey) {
