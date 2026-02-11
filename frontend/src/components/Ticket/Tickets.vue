@@ -5,9 +5,7 @@
         <p class="font-semibold mb-2">NO-{{ ticket.codigo }}</p>
 
         <p class="font-semibold" :class="textClass">
-          <span
-            class="text-gray-200 px-2 py-[2px] rounded-lg font-mono bg-gray-800 border border-gray-600"
-          >
+          <span class="text-gray-200 px-2 py-[2px] rounded-lg font-mono bg-gray-800 border border-gray-600">
             {{ ticket.codCli }}
           </span>
           {{ ticket.responsavel }}
@@ -33,10 +31,7 @@
         </div>
 
         <!-- Quadradinho de cor do entregador -->
-        <span
-          class="inline-block w-5 h-5 rounded"
-          :style="{ backgroundColor: entregadorColor }"
-        ></span>
+        <span class="inline-block w-5 h-5 rounded" :style="{ backgroundColor: entregadorColor }"></span>
       </div>
     </div>
 
@@ -53,6 +48,16 @@
         </template>
       </p>
       <slot name="actions" class="flex-auto" v-if="!ticket.observacaoEstoque"></slot>
+    </div>
+
+    <div v-if="ticket.previsaoFinanceiro || ticket.observacaoFinanceiro" class="mt-2 text-xs">
+      <p v-if="ticket.previsaoFinanceiro" class="text-orange-300">
+        Próxima data: <span class="font-semibold">{{ ticket.previsaoFinanceiro }}</span>
+      </p>
+
+      <p v-if="ticket.observacaoFinanceiro" class="text-gray-200">
+        Obs: <span class="text-gray-300">{{ ticket.observacaoFinanceiro }}</span>
+      </p>
     </div>
 
     <div class="mt-3 flex gap-2" v-if="ticket.observacaoEstoque">
