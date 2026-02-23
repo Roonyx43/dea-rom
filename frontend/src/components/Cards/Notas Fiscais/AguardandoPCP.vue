@@ -40,22 +40,32 @@ function toMySQLDateTime(dtLocal) {
   return dtLocal.replace('T', ' ') + ':00'
 }
 
-// para exibir no badge do card
-function fmtAgendamentoLocal(value) {
-  if (!value) return ''
+function parseDateKeepingLocal(value) {
+  if (!value) return null
 
-  let d
+  // Se já for Date, ok
+  if (value instanceof Date) return value
 
-  if (value instanceof Date) {
-    d = value
-  } else if (typeof value === 'string') {
-    const iso = value.includes('T') ? value : value.replace(' ', 'T')
-    d = new Date(iso)
-  } else {
-    d = new Date(value)
+  const raw = String(value)
+
+  // Normaliza (aceita "YYYY-MM-DD HH:mm:ss" e "YYYY-MM-DDTHH:mm:ss")
+  let iso = raw.includes('T') ? raw : raw.replace(' ', 'T')
+
+  // 🚨 Se terminar com Z, o JS converte pra local e muda a hora.
+  // Como seu backend está mandando "hora local" com etiqueta UTC,
+  // removemos o Z pra manter a hora “como está”.
+  if (iso.endsWith('Z')) {
+    iso = iso.slice(0, -1)
   }
 
-  if (isNaN(d)) return String(value)
+  const d = new Date(iso)
+  return isNaN(d) ? null : d
+}
+
+// para exibir no badge do card
+function fmtAgendamentoLocal(value) {
+  const d = parseDateKeepingLocal(value)
+  if (!d) return value ? String(value) : ''
 
   const dd = String(d.getDate()).padStart(2, '0')
   const mm = String(d.getMonth() + 1).padStart(2, '0')
@@ -200,18 +210,11 @@ function fecharModalItens() {
 const podeVoltarParaAprovados = computed(() => {
   if (!ticketSelecionado.value) return false
 
-  // tenta pegar a data mais confiável:
-  // 1) o que veio do backend (ticketSelecionado.agendamentoProducao)
-  // 2) se não tiver, usa o que está no input (agendamentoProducao)
   const valor =
     ticketSelecionado.value.agendamentoProducao || agendamentoProducao.value
 
-  if (!valor) return false
-
-  const raw = String(valor)
-  const iso = raw.includes('T') ? raw : raw.replace(' ', 'T')
-  const dt = new Date(iso)
-  if (isNaN(dt)) return false
+  const dt = parseDateKeepingLocal(valor)
+  if (!dt) return false
 
   const agora = new Date()
   return agora.getTime() >= dt.getTime()
