@@ -39,7 +39,8 @@ router.post("/:codigo/status", async (req, res) => {
       motivo,
       itensSolicitados,
       codCli,
-      agendamento_producao, // 👈 novo campo vindo do front
+      agendamento_producao,
+      observacao, // ✅ NOVO
     } = req.body;
 
     // 1) UPSERT na tickets_dashboard
@@ -52,17 +53,19 @@ router.post("/:codigo/status", async (req, res) => {
         status_at,
         username,
         motivo,
-        agendamento_producao
+        agendamento_producao,
+        observacao
       )
-      VALUES (?, ?, ?, NOW(), ?, ?, ?)
+      VALUES (?, ?, ?, NOW(), ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         status = VALUES(status),
         status_at = NOW(),
         username = VALUES(username),
         motivo = VALUES(motivo),
-        agendamento_producao = VALUES(agendamento_producao)
+        agendamento_producao = VALUES(agendamento_producao),
+        observacao = VALUES(observacao)
       `,
-      [codOrcamento, codCli, status, username, motivo, agendamento_producao]
+      [codOrcamento, codCli, status, username, motivo, agendamento_producao, observacao]
     );
 
     // 2) Inserir itens solicitados no banco
@@ -78,6 +81,8 @@ router.post("/:codigo/status", async (req, res) => {
         );
       }
     }
+
+    console.log('BODY:', req.body)
 
     return res.json({ ok: true });
   } catch (err) {

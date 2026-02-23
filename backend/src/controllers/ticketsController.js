@@ -1,13 +1,13 @@
-const { withDbActive } = require('../config/db');
-const { pool } = require('../config/mysql');
+const { withDbActive } = require('../config/db')
+const { pool } = require('../config/mysql')
 
 // Busca entregador usando o "local" (LOCAL_EXIBICAO / bairro)
 // Regra: tenta bater com bairro, se não achou tenta cidade, se não achar => "Transportadora"
 async function findEntregador(localExibicao) {
-  const localRaw = localExibicao || '';
-  const local = localRaw.trim();
+  const localRaw = localExibicao || ''
+  const local = localRaw.trim()
 
-  if (!local) return 'Transportadora';
+  if (!local) return 'Transportadora'
 
   // 1) tenta como BAIRRO
   const [rowsBairro] = await pool.query(
@@ -19,10 +19,10 @@ async function findEntregador(localExibicao) {
       LIMIT 1
     `,
     [local]
-  );
+  )
 
   if (rowsBairro.length) {
-    return rowsBairro[0].entregador;
+    return rowsBairro[0].entregador
   }
 
   // 2) tenta como CIDADE
@@ -35,88 +35,93 @@ async function findEntregador(localExibicao) {
       LIMIT 1
     `,
     [local]
-  );
+  )
 
   if (rowsCidade.length) {
-    return rowsCidade[0].entregador;
+    return rowsCidade[0].entregador
   }
 
   // 3) fallback
-  return 'Transportadora';
+  return 'Transportadora'
 }
 
 function fbQuery(sql, params = []) {
   return new Promise((resolve, reject) => {
     withDbActive((err, db) => {
-      if (err) return reject(err);
+      if (err) return reject(err)
       db.query(sql, params, (e, rows) => {
-        db.detach();
-        if (e) return reject(e);
-        resolve(rows || []);
-      });
-    });
-  });
+        db.detach()
+        if (e) return reject(e)
+        resolve(rows || [])
+      })
+    })
+  })
 }
 
-async function moverStatusTicket({ codorc, status, username, motivo }, cb) {
+/**
+ * Move o status do ticket e faz UPSERT em tickets_dashboard.
+ * ✅ Agora inclui "observacao" também.
+ */
+async function moverStatusTicket({ codorc, status, username, motivo, observacao }, cb) {
   try {
-    const cod = parseInt(codorc, 10);
-    if (!Number.isFinite(cod)) return cb(new Error('codorc inválido'));
+    const cod = parseInt(codorc, 10)
+    if (!Number.isFinite(cod)) return cb(new Error('codorc inválido'))
 
     // Busca CODCLI na Firebird
     const rs = await fbQuery(
       `SELECT FIRST 1 CODCLI FROM VDORCAMENTO WHERE CODEMP=7 AND CODFILIAL=1 AND CODORC=?`,
       [cod]
-    );
-    const row = rs[0];
-    if (!row) return cb(new Error('Orçamento não encontrado'));
+    )
+    const row = rs[0]
+    if (!row) return cb(new Error('Orçamento não encontrado'))
 
-    // UPSERT na tickets_dashboard
+    // UPSERT na tickets_dashboard (agora com observacao)
     const upsert = `
-      INSERT INTO tickets_dashboard (codorc, codcli, status, status_at, created_at, updated_at, username, motivo)
-      VALUES (?, ?, ?, NOW(), NOW(), NOW(), ?, ?)
+      INSERT INTO tickets_dashboard (
+        codorc, codcli, status, status_at, created_at, updated_at, username, motivo, observacao
+      )
+      VALUES (?, ?, ?, NOW(), NOW(), NOW(), ?, ?, ?)
       ON DUPLICATE KEY UPDATE
-        status     = VALUES(status),
-        status_at  = NOW(),
-        updated_at = NOW(),
-        username   = VALUES(username),
-        motivo     = VALUES(motivo)
-    `;
+        status      = VALUES(status),
+        status_at   = NOW(),
+        updated_at  = NOW(),
+        username    = VALUES(username),
+        motivo      = VALUES(motivo),
+        observacao  = VALUES(observacao)
+    `
     await pool.query(upsert, [
       cod,
       row.CODCLI,
       status,
       username || null,
       motivo || null,
-    ]);
+      observacao || null,
+    ])
 
     // 🔹 Se voltou para APROVADO, limpa os itens solicitados pro PCP
     if (status === 'APROVADO') {
-      await pool.query(
-        'DELETE FROM itens_solicitados_pcp WHERE cod_orcamento = ?',
-        [cod]
-      );
+      await pool.query('DELETE FROM itens_solicitados_pcp WHERE cod_orcamento = ?', [cod])
     }
 
-    cb(null, { ok: true });
+    cb(null, { ok: true })
   } catch (err) {
-    cb(err);
+    cb(err)
   }
 }
 
 function toYMD(d) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 // ===== APROVADOS =====
 async function fetchAprovadosBaseFB(dias) {
-  let n = parseInt(dias, 10);
-  if (!Number.isFinite(n) || n < 0) n = 30;
-  const now = new Date();
-  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  cutoff.setDate(cutoff.getDate() - n);
-  const cutoffStr = toYMD(cutoff);
+  let n = parseInt(dias, 10)
+  if (!Number.isFinite(n) || n < 0) n = 30
+  const now = new Date()
+  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  cutoff.setDate(cutoff.getDate() - n)
+  const cutoffStr = toYMD(cutoff)
 
   const sql = `
     SELECT
@@ -130,15 +135,16 @@ async function fetchAprovadosBaseFB(dias) {
     FROM VDORCAMENTO o
     JOIN VDCLIENTE c ON c.CODEMP=o.CODEMP AND c.CODFILIAL=o.CODFILIAL AND c.CODCLI=o.CODCLI
     WHERE o.CODEMP=7 AND o.CODFILIAL=1 AND o.STATUSORC='OL' AND o.CODTIPOMOV=600 AND o.DTORC>=?
-    ORDER BY o.DTORC DESC, o.HINS DESC`;
+    ORDER BY o.DTORC DESC, o.HINS DESC
+  `
 
-  return fbQuery(sql, [cutoffStr]);
+  return fbQuery(sql, [cutoffStr])
 }
 
 async function fetchItensPorOrcamentosFB(codorcs) {
-  if (!Array.isArray(codorcs) || codorcs.length === 0) return new Map();
+  if (!Array.isArray(codorcs) || codorcs.length === 0) return new Map()
 
-  const placeholders = codorcs.map(() => '?').join(',');
+  const placeholders = codorcs.map(() => '?').join(',')
 
   const sql = `
     SELECT 
@@ -155,16 +161,16 @@ async function fetchItensPorOrcamentosFB(codorcs) {
      AND e.CODFILIAL = o.CODFILIAL 
      AND e.CODPROD   = o.CODPROD
     WHERE o.CODORC IN (${placeholders})
-  `;
+  `
 
-  const rows = await fbQuery(sql, codorcs);
+  const rows = await fbQuery(sql, codorcs)
 
-  const map = new Map();
+  const map = new Map()
 
   for (const r of rows || []) {
-    const qtdSolicitada = Number(r.QTDITORC ?? 0);
-    const saldoAtual = Number(r.SLDPROD ?? 0);
-    const saldoDepois = saldoAtual - qtdSolicitada;
+    const qtdSolicitada = Number(r.QTDITORC ?? 0)
+    const saldoAtual = Number(r.SLDPROD ?? 0)
+    const saldoDepois = saldoAtual - qtdSolicitada
 
     const item = {
       codEmp: r.CODEMP,
@@ -177,19 +183,22 @@ async function fetchItensPorOrcamentosFB(codorcs) {
       saldoAtual,
       saldoDepois,
       estoqueInsuficiente: saldoDepois < 0,
-    };
+    }
 
     if (!map.has(r.CODORC)) {
-      map.set(r.CODORC, []);
+      map.set(r.CODORC, [])
     }
-    map.get(r.CODORC).push(item);
+    map.get(r.CODORC).push(item)
   }
 
-  return map;
+  return map
 }
 
+/**
+ * ✅ Agora também retorna "observacao"
+ */
 async function fetchTDByCodorcsMy(codorcs) {
-  if (!Array.isArray(codorcs) || codorcs.length === 0) return [];
+  if (!Array.isArray(codorcs) || codorcs.length === 0) return []
   const [rows] = await pool.query(
     `
     SELECT
@@ -199,71 +208,67 @@ async function fetchTDByCodorcsMy(codorcs) {
       status_at,
       username,
       motivo,
+      observacao,
       agendamento_producao
     FROM tickets_dashboard
     WHERE codorc IN (?)
     `,
     [codorcs]
-  );
-  return rows || [];
+  )
+  return rows || []
 }
 
 function listarAprovados(dias, cb) {
-  (async () => {
-    const base = await fetchAprovadosBaseFB(dias);
-    const codorcs = base.map(r => r.CODORC);
+  ;(async () => {
+    const base = await fetchAprovadosBaseFB(dias)
+    const codorcs = base.map(r => r.CODORC)
 
-    const td = await fetchTDByCodorcsMy(codorcs);
-    const mapTD = new Map(td.map(r => [r.codorc, r]));
+    const td = await fetchTDByCodorcsMy(codorcs)
+    const mapTD = new Map(td.map(r => [r.codorc, r]))
 
-    const mapItens = await fetchItensPorOrcamentosFB(codorcs);
+    const mapItens = await fetchItensPorOrcamentosFB(codorcs)
 
     const rowsBase = base
       .filter(r => {
-        const t = mapTD.get(r.CODORC);
-        return !t || t.status === 'APROVADO';
+        const t = mapTD.get(r.CODORC)
+        return !t || t.status === 'APROVADO'
       })
       .map(r => {
-        const t = mapTD.get(r.CODORC);
-        const baseDate = t?.status_at || r.DTORC;
-        const diasStatus = Math.floor(
-          (Date.now() - new Date(baseDate).getTime()) / 86400000
-        );
+        const t = mapTD.get(r.CODORC)
+        const baseDate = t?.status_at || r.DTORC
+        const diasStatus = Math.floor((Date.now() - new Date(baseDate).getTime()) / 86400000)
 
-        const itens = mapItens.get(r.CODORC) || [];
-        const estoqueInsuficiente = itens.some(i => i.estoqueInsuficiente);
+        const itens = mapItens.get(r.CODORC) || []
+        const estoqueInsuficiente = itens.some(i => i.estoqueInsuficiente)
 
         return {
           ...r,
           DIAS_STATUS: diasStatus,
           ITENS: itens,
           ESTOQUE_INSUFICIENTE: estoqueInsuficiente,
-        };
-      });
+
+          // ✅ se existir registro no dashboard, devolve observação
+          OBSERVACAO: t?.observacao || null,
+        }
+      })
 
     const rowsComEntregador = await Promise.all(
-      rowsBase.map(async (r) => {
-        const entregador = await findEntregador(
-          r.LOCAL_EXIBICAO || r.BAIRCLI || null
-        );
-
-        return {
-          ...r,
-          ENTREGADOR: entregador,
-        };
+      rowsBase.map(async r => {
+        const entregador = await findEntregador(r.LOCAL_EXIBICAO || r.BAIRCLI || null)
+        return { ...r, ENTREGADOR: entregador }
       })
-    );
+    )
 
-    cb(null, rowsComEntregador);
-  })().catch(err => cb(err));
+    cb(null, rowsComEntregador)
+  })().catch(err => cb(err))
 }
 
 // ===== ORÇAMENTOS AUX =====
 async function fetchOrcamentosByCodorcsFB(codorcs) {
-  if (!Array.isArray(codorcs) || codorcs.length === 0) return [];
-  const ints = codorcs.map(n => parseInt(n, 10)).filter(Number.isFinite);
-  if (ints.length === 0) return [];
-  const inList = ints.join(',');
+  if (!Array.isArray(codorcs) || codorcs.length === 0) return []
+  const ints = codorcs.map(n => parseInt(n, 10)).filter(Number.isFinite)
+  if (ints.length === 0) return []
+  const inList = ints.join(',')
 
   return fbQuery(`
     SELECT
@@ -286,13 +291,13 @@ async function fetchOrcamentosByCodorcsFB(codorcs) {
     FROM VDORCAMENTO o
     JOIN VDCLIENTE c ON c.CODEMP=o.CODEMP AND c.CODFILIAL=o.CODFILIAL AND c.CODCLI=o.CODCLI
     WHERE o.CODEMP=7 AND o.CODFILIAL=1 AND o.CODORC IN (${inList})
-  `);
+  `)
 }
 
 // ===== OAO / CCD / FINANCEIRO =====
 async function fetchUnificadoOAOCCD(dias) {
-  let n = parseInt(dias, 10);
-  if (!Number.isFinite(n) || n < 0) n = 30;
+  let n = parseInt(dias, 10)
+  if (!Number.isFinite(n) || n < 0) n = 30
 
   const sql = `
     SELECT
@@ -395,20 +400,19 @@ async function fetchUnificadoOAOCCD(dias) {
     JOIN VDCLIENTE c ON c.CODEMP=o.CODEMP And c.CODFILIAL=o.CODFILIAL And c.CODCLI=o.CODCLI
     WHERE o.CODEMP=7 And o.CODFILIAL=1 And o.CODTIPOMOV=600 And o.STATUSORC IN ('OA','OC','CD') And o.DTORC >= CURRENT_DATE - ?
     ORDER BY o.DTORC DESC, o.HINS DESC
-  `;
-
-  return fbQuery(sql, [n]);
+  `
+  return fbQuery(sql, [n])
 }
 
 // ===== RECUSADOS (VN) =====
 async function fetchRecusadosBaseFB(dias) {
-  let n = parseInt(dias, 10);
-  if (!Number.isFinite(n) || n < 0) n = 30;
+  let n = parseInt(dias, 10)
+  if (!Number.isFinite(n) || n < 0) n = 30
 
-  const now = new Date();
-  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  cutoff.setDate(cutoff.getDate() - n);
-  const cutoffStr = toYMD(cutoff);
+  const now = new Date()
+  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  cutoff.setDate(cutoff.getDate() - n)
+  const cutoffStr = toYMD(cutoff)
 
   const sql = `
     SELECT
@@ -452,9 +456,8 @@ async function fetchRecusadosBaseFB(dias) {
       AND o.STATUSORC = 'OV'
       AND v.STATUSVENDA = 'NV'
       AND o.DTORC >= CURRENT_DATE - 60
-  `;
-
-  return fbQuery(sql, [cutoffStr]);
+  `
+  return fbQuery(sql, [cutoffStr])
 }
 
 /**
@@ -462,10 +465,10 @@ async function fetchRecusadosBaseFB(dias) {
  * saldoDepois (SLDPROD - QTDITORC) < 0.
  */
 async function fetchCodorcsComEstoqueInsuficienteFB(codorcs) {
-  if (!Array.isArray(codorcs) || codorcs.length === 0) return [];
-  const ints = codorcs.map(n => parseInt(n, 10)).filter(Number.isFinite);
-  if (!ints.length) return [];
-  const inList = ints.join(',');
+  if (!Array.isArray(codorcs) || codorcs.length === 0) return []
+  const ints = codorcs.map(n => parseInt(n, 10)).filter(Number.isFinite)
+  if (!ints.length) return []
+  const inList = ints.join(',')
 
   const sql = `
     SELECT DISTINCT o.CODORC
@@ -478,9 +481,8 @@ async function fetchCodorcsComEstoqueInsuficienteFB(codorcs) {
       AND o.CODFILIAL=1
       AND o.CODORC IN (${inList})
       AND (e.SLDPROD - o.QTDITORC) < 0
-  `;
-
-  return fbQuery(sql);
+  `
+  return fbQuery(sql)
 }
 
 // ===== AGUARDANDO PCP =====
@@ -489,6 +491,7 @@ async function listarAguardandoPCP(cb) {
     // 1) busca na tickets_dashboard somente quem:
     //    - está AGUARDANDO_PCP
     //    - tem itens na tabela itens_solicitados_pcp
+    // ✅ agora retorna observacao também
     const [rows] = await pool.query(
       `
       SELECT
@@ -497,6 +500,7 @@ async function listarAguardandoPCP(cb) {
         td.status,
         td.username,
         td.motivo,
+        td.observacao,
         td.status_at,
         td.agendamento_producao
       FROM tickets_dashboard td
@@ -508,22 +512,20 @@ async function listarAguardandoPCP(cb) {
         )
       ORDER BY td.status_at DESC
       `
-    );
+    )
 
-    if (!rows.length) return cb(null, []);
+    if (!rows.length) return cb(null, [])
 
-    const codorcs = rows.map(r => r.codorc);
+    const codorcs = rows.map(r => r.codorc)
 
     // 2) busca detalhes do orçamento na Firebird
-    const detalhes = await fetchOrcamentosByCodorcsFB(codorcs);
-    const map = new Map(detalhes.map(d => [d.CODORC, d]));
+    const detalhes = await fetchOrcamentosByCodorcsFB(codorcs)
+    const map = new Map(detalhes.map(d => [d.CODORC, d]))
 
     // 3) monta saída base
     const outBase = rows.map(t => {
-      const d = map.get(t.codorc) || {};
-      const dias = Math.floor(
-        (Date.now() - new Date(t.status_at).getTime()) / 86400000
-      );
+      const d = map.get(t.codorc) || {}
+      const dias = Math.floor((Date.now() - new Date(t.status_at).getTime()) / 86400000)
 
       return {
         CODORC: d.CODORC || t.codorc,
@@ -538,52 +540,51 @@ async function listarAguardandoPCP(cb) {
         STATUS_AT: t.status_at,
         USERNAME: t.username || null,
         MOTIVO: t.motivo || null,
+
+        // ✅ NOVO
+        OBSERVACAO: t.observacao || null,
+
         DIAS_STATUS: dias,
         AGENDAMENTO_PRODUCAO: t.agendamento_producao || null,
-      };
-    });
+      }
+    })
 
     // 4) resolve entregador
     const outComEntregador = await Promise.all(
-      outBase.map(async (r) => {
-        const entregador = await findEntregador(
-          r.LOCAL_EXIBICAO || r.BAIRCLI || null
-        );
-        return { ...r, ENTREGADOR: entregador };
+      outBase.map(async r => {
+        const entregador = await findEntregador(r.LOCAL_EXIBICAO || r.BAIRCLI || null)
+        return { ...r, ENTREGADOR: entregador }
       })
-    );
+    )
 
-    cb(null, outComEntregador);
+    cb(null, outComEntregador)
   } catch (err) {
-    cb(err);
+    cb(err)
   }
 }
-
 
 // ===== RECUSADOS (lista final) =====
 async function listarRecusados(dias, cb) {
   if (typeof dias === 'function') {
-    cb = dias;
-    dias = 30;
+    cb = dias
+    dias = 30
   }
 
-  let n = parseInt(dias, 10);
-  if (!Number.isFinite(n) || n < 0) n = 30;
+  let n = parseInt(dias, 10)
+  if (!Number.isFinite(n) || n < 0) n = 30
 
-  (async () => {
-    const base = await fetchRecusadosBaseFB(n);
-    if (!base.length) return cb(null, []);
+  ;(async () => {
+    const base = await fetchRecusadosBaseFB(n)
+    if (!base.length) return cb(null, [])
 
-    const codorcs = base.map(r => r.CODORC);
-    const td = await fetchTDByCodorcsMy(codorcs);
-    const mapTD = new Map(td.map(r => [r.codorc, r]));
+    const codorcs = base.map(r => r.CODORC)
+    const td = await fetchTDByCodorcsMy(codorcs)
+    const mapTD = new Map(td.map(r => [r.codorc, r]))
 
     const outBase = base.map(r => {
-      const t = mapTD.get(r.CODORC);
-      const baseDate = t?.status_at || r.DTORC;
-      const diasStatus = Math.floor(
-        (Date.now() - new Date(baseDate).getTime()) / 86400000
-      );
+      const t = mapTD.get(r.CODORC)
+      const baseDate = t?.status_at || r.DTORC
+      const diasStatus = Math.floor((Date.now() - new Date(baseDate).getTime()) / 86400000)
 
       return {
         CODORC: r.CODORC,
@@ -599,61 +600,59 @@ async function listarRecusados(dias, cb) {
         STATUS_AT: t?.status_at || null,
         USERNAME: t?.username || null,
         MOTIVO: t?.motivo || null,
+
+        // ✅ NOVO
+        OBSERVACAO: t?.observacao || null,
+
         DIAS_STATUS: diasStatus,
-      };
-    });
+      }
+    })
 
     const outComEntregador = await Promise.all(
-      outBase.map(async (r) => {
-        const entregador = await findEntregador(
-          r.LOCAL_EXIBICAO || r.BAIRCLI || null
-        );
-        return { ...r, ENTREGADOR: entregador };
+      outBase.map(async r => {
+        const entregador = await findEntregador(r.LOCAL_EXIBICAO || r.BAIRCLI || null)
+        return { ...r, ENTREGADOR: entregador }
       })
-    );
+    )
 
-    cb(null, outComEntregador);
-  })().catch(err => cb(err));
+    cb(null, outComEntregador)
+  })().catch(err => cb(err))
 }
 
 // ===== OUTROS =====
 async function removerDoDashboard(codorc, cb) {
   try {
-    const cod = parseInt(codorc, 10);
-    if (!Number.isFinite(cod)) return cb(new Error('codorc inválido'));
-    const [r] = await pool.query('DELETE FROM tickets_dashboard WHERE codorc=?', [cod]);
-    cb(null, { ok: true, deleted: r.affectedRows });
+    const cod = parseInt(codorc, 10)
+    if (!Number.isFinite(cod)) return cb(new Error('codorc inválido'))
+    const [r] = await pool.query('DELETE FROM tickets_dashboard WHERE codorc=?', [cod])
+    cb(null, { ok: true, deleted: r.affectedRows })
   } catch (err) {
-    cb(err);
+    cb(err)
   }
 }
 
 async function listarAguardandoFinanceiro(dias, cb) {
   try {
-    const rows = await fetchUnificadoOAOCCD(dias);
+    const rows = await fetchUnificadoOAOCCD(dias)
 
     const outBase = (rows || [])
       .filter(r => String(r.STATUS_CLIENTE || '').toUpperCase() === 'BLOQUEADO')
       .map(r => {
-        const baseDate = r.DTORC || new Date();
-        const diasStatus = Math.floor(
-          (Date.now() - new Date(baseDate).getTime()) / 86400000
-        );
-        return { ...r, DIAS_STATUS: diasStatus };
-      });
+        const baseDate = r.DTORC || new Date()
+        const diasStatus = Math.floor((Date.now() - new Date(baseDate).getTime()) / 86400000)
+        return { ...r, DIAS_STATUS: diasStatus }
+      })
 
     const outComEntregador = await Promise.all(
-      outBase.map(async (r) => {
-        const entregador = await findEntregador(
-          r.LOCAL_EXIBICAO || r.BAIRCLI || null
-        );
-        return { ...r, ENTREGADOR: entregador };
+      outBase.map(async r => {
+        const entregador = await findEntregador(r.LOCAL_EXIBICAO || r.BAIRCLI || null)
+        return { ...r, ENTREGADOR: entregador }
       })
-    );
+    )
 
-    cb(null, outComEntregador);
+    cb(null, outComEntregador)
   } catch (e) {
-    cb(e);
+    cb(e)
   }
 }
 
@@ -665,4 +664,4 @@ module.exports = {
   listarRecusados,
   removerDoDashboard,
   listarAguardandoFinanceiro,
-};
+}
