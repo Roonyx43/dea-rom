@@ -11,13 +11,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-
-  // ✅ função de refresh individual (clientes)
   onRefresh: {
     type: Function,
     default: null,
   },
-
   defaultLimit: {
     type: Number,
     default: 20,
@@ -27,20 +24,23 @@ const props = defineProps({
 const canvasRef = ref(null);
 let chartInstance = null;
 
-// ✅ filtros individuais
+// filtros de data
 const startDate = ref("");
 const endDate = ref("");
 
 function formatMoney(value) {
   const n = Number(value || 0);
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return n.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
 function buildChart() {
   if (!canvasRef.value) return;
   if (!props.data?.data) return;
 
-  const rows = props.data.data;
+  const rows = props.data.data.slice(0, 10);
 
   const labels = rows.map((x) => x.NOMECLI || x.RAZCLI || "Cliente");
   const values = rows.map((x) => Number(x.TOTAL_COMPRADO || 0));
@@ -60,7 +60,7 @@ function buildChart() {
           data: values,
           borderWidth: 2,
           borderColor: "#3b82f6",
-          backgroundColor: "rgba(59, 130, 246, 0.25)",
+          backgroundColor: "rgba(59,130,246,0.25)",
           borderRadius: 10,
           barThickness: 16,
         },
@@ -70,6 +70,7 @@ function buildChart() {
       indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
+
       plugins: {
         legend: {
           labels: { color: "#e5e7eb" },
@@ -80,6 +81,7 @@ function buildChart() {
           },
         },
       },
+
       scales: {
         x: {
           ticks: {
@@ -97,7 +99,6 @@ function buildChart() {
   });
 }
 
-// ✅ aplica filtro individual
 function applyFilter() {
   if (!props.onRefresh) return;
 
@@ -108,33 +109,46 @@ function applyFilter() {
   });
 }
 
+// quando o componente inicia
 onMounted(() => {
-  // ✅ default: últimos 30 dias
   const now = new Date();
+
   const end = now.toISOString().slice(0, 10);
-  const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+  const start = new Date(
+    now.getTime()
+  )
     .toISOString()
     .slice(0, 10);
 
   startDate.value = start;
   endDate.value = end;
-
-  buildChart();
 });
 
+// quando chegam novos dados do backend
 watch(
   () => props.data,
-  () => buildChart(),
+  () => {
+    buildChart();
+  },
   { deep: true }
 );
 
+// quando o usuário altera as datas
+watch([startDate, endDate], () => {
+  applyFilter();
+});
+
 onBeforeUnmount(() => {
-  if (chartInstance) chartInstance.destroy();
+  if (chartInstance) {
+    chartInstance.destroy();
+  }
 });
 </script>
 
 <template>
   <div class="bg-gray-800 p-5 rounded-lg border border-blue-500">
+
     <div class="flex mb-4 justify-between items-center gap-2">
       <h3 class="text-lg font-semibold text-blue-400">
         Top Clientes
@@ -164,10 +178,15 @@ onBeforeUnmount(() => {
       </svg>
     </div>
 
-    <!-- ✅ filtro individual -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+    <!-- filtros -->
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+
       <div class="flex flex-col">
-        <label class="text-xs text-gray-400 mb-1">Data início</label>
+        <label class="text-xs text-gray-400 mb-1">
+          Data início
+        </label>
+
         <input
           type="date"
           v-model="startDate"
@@ -176,7 +195,10 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="flex flex-col">
-        <label class="text-xs text-gray-400 mb-1">Data fim</label>
+        <label class="text-xs text-gray-400 mb-1">
+          Data fim
+        </label>
+
         <input
           type="date"
           v-model="endDate"
@@ -184,15 +206,6 @@ onBeforeUnmount(() => {
         />
       </div>
 
-      <div class="flex items-end">
-        <button
-          type="button"
-          @click="applyFilter"
-          class="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
-        >
-          Aplicar
-        </button>
-      </div>
     </div>
 
     <p
@@ -218,10 +231,12 @@ onBeforeUnmount(() => {
         <span class="text-gray-200 truncate max-w-[65%]">
           {{ idx + 1 }}. {{ c.NOMECLI || c.RAZCLI }}
         </span>
+
         <span class="text-blue-300 font-semibold">
           {{ formatMoney(c.TOTAL_COMPRADO) }}
         </span>
       </div>
     </div>
+
   </div>
 </template>

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch, computed } from "vue";
+import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from "vue";
 import Chart from "chart.js/auto";
 
 const props = defineProps({
@@ -11,45 +11,40 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-
-  // ✅ função que o componente chama ao clicar em "Aplicar"
-  // Ex: onRefresh({ startDate, endDate, limit })
   onRefresh: {
     type: Function,
     default: null,
-  },
-
-  // ✅ opcional: limit padrão
-  defaultLimit: {
-    type: Number,
-    default: 20,
-  },
+  }
 });
 
 const canvasRef = ref(null);
 let chartInstance = null;
 
-// ✅ estado do filtro de datas
 const startDate = ref("");
 const endDate = ref("");
+const initialized = ref(false);
+
+function getToday() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function formatMoney(value) {
   const n = Number(value || 0);
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return n.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL"
+  });
 }
 
-// ✅ Formatação de carteira: "REGIAO 03 - SERGIO..." => "Sergio ..."
 function formatNomeCarteira(nome) {
   if (!nome) return "";
 
   let clean = String(nome);
 
-  // ✅ pega tudo depois do "-"
   if (clean.includes("-")) {
     clean = clean.split("-").slice(1).join("-").trim();
   }
 
-  // ✅ Title Case
   clean = clean
     .toLowerCase()
     .split(" ")
@@ -57,7 +52,6 @@ function formatNomeCarteira(nome) {
     .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
     .join(" ");
 
-  // ✅ preservar siglas comuns (PF/PJ)
   clean = clean
     .replace(/\bPf\b/g, "PF")
     .replace(/\bPj\b/g, "PJ");
@@ -65,7 +59,6 @@ function formatNomeCarteira(nome) {
   return clean;
 }
 
-// ✅ Paleta (dark + contraste)
 const palette = [
   "#22c55e",
   "#3b82f6",
@@ -92,21 +85,24 @@ const totalGeral = computed(() => {
   return rows.reduce((sum, item) => sum + Number(item.TOTAL_VENDIDO || 0), 0);
 });
 
-function buildChart() {
-  if (!canvasRef.value) return;
-  if (!props.data?.data) return;
-
-  const rows = props.data.data;
-
-  // ✅ formatando nome aqui
-  const labels = rows.map((x) => formatNomeCarteira(x.NOMEVEND));
-  const values = rows.map((x) => Number(x.TOTAL_VENDIDO || 0));
-  const colors = getColors(values.length);
-
+function destroyChart() {
   if (chartInstance) {
     chartInstance.destroy();
     chartInstance = null;
   }
+}
+
+function buildChart() {
+  if (!canvasRef.value) return;
+  if (!props.data?.data?.length) return;
+
+  const rows = props.data.data;
+
+  const labels = rows.map((x) => formatNomeCarteira(x.NOMEVEND));
+  const values = rows.map((x) => Number(x.TOTAL_VENDIDO || 0));
+  const colors = getColors(values.length);
+
+  destroyChart();
 
   chartInstance = new Chart(canvasRef.value, {
     type: "doughnut",
@@ -119,9 +115,9 @@ function buildChart() {
           backgroundColor: colors,
           hoverBackgroundColor: colors,
           borderWidth: 2,
-          borderColor: "#111827",
-        },
-      ],
+          borderColor: "#111827"
+        }
+      ]
     },
     options: {
       responsive: true,
@@ -133,8 +129,8 @@ function buildChart() {
           labels: {
             color: "#e5e7eb",
             boxWidth: 12,
-            padding: 12,
-          },
+            padding: 12
+          }
         },
         tooltip: {
           callbacks: {
@@ -147,58 +143,55 @@ function buildChart() {
                   : 0;
 
               return ` ${label}: ${formatMoney(value)} (${percent}%)`;
-            },
-          },
-        },
-      },
-    },
+            }
+          }
+        }
+      }
+    }
   });
 }
 
-// ✅ aplica filtro (emite refresh pro pai)
 function applyFilter() {
-  console.log("✅ clique aplicar", {
-    startDate: startDate.value,
-    endDate: endDate.value,
-    limit: props.defaultLimit,
-    hasOnRefresh: !!props.onRefresh,
-  });
-
-  if (!props.onRefresh) {
-    console.warn("⚠️ onRefresh não foi passado para o componente!");
-    return;
-  }
+  if (!props.onRefresh) return;
 
   props.onRefresh({
     startDate: startDate.value || undefined,
-    endDate: endDate.value || undefined,
-    limit: props.defaultLimit,
+    endDate: endDate.value || undefined
   });
 }
 
+onMounted(async () => {
+  startDate.value = getToday();
+  endDate.value = getToday();
 
-onMounted(() => {
-  // ✅ define datas default (últimos 30 dias)
-  const now = new Date();
-  const end = now.toISOString().slice(0, 10);
-  const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  await nextTick();
 
-  startDate.value = start;
-  endDate.value = end;
+  initialized.value = true;
 
-  buildChart();
+  applyFilter();
 });
 
+// reage automaticamente à mudança das datas
+watch([startDate, endDate], () => {
+  if (!initialized.value) return;
+
+  applyFilter();
+});
+
+// renderiza gráfico quando os dados chegam
 watch(
   () => props.data,
-  () => buildChart(),
-  { deep: true }
+  async (newData) => {
+    if (!newData?.data) return;
+
+    await nextTick();
+
+    buildChart();
+  }
 );
 
 onBeforeUnmount(() => {
-  if (chartInstance) chartInstance.destroy();
+  destroyChart();
 });
 </script>
 
@@ -243,7 +236,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- ✅ Filtro de data (mobile friendly) -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
       <div class="flex flex-col">
         <label class="text-xs text-gray-400 mb-1">Data início</label>
         <input
@@ -260,15 +253,6 @@ onBeforeUnmount(() => {
           v-model="endDate"
           class="bg-gray-900 text-gray-100 border border-gray-700 rounded-lg px-3 py-2 text-sm"
         />
-      </div>
-
-      <div class="flex items-end">
-        <button
-          @click="applyFilter"
-          class="w-full bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg"
-        >
-          Aplicar
-        </button>
       </div>
     </div>
 
