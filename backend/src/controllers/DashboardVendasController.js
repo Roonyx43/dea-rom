@@ -221,6 +221,76 @@ class DashboardVendasController {
         .json({ error: "Erro ao buscar vendas por vendedor" });
     }
   }
+
+  // ✅ Evolução de vendas por dia
+  // ✅ Evolução de vendas por mês (ano inteiro)
+  async evolucaoVendas(req, res) {
+    try {
+      const year = Number(req.query.year) || new Date().getFullYear();
+
+      const key = `evolucaoVendas|${year}`;
+      const cached = getCache(key);
+      if (cached) return res.json(cached);
+
+      const sql = `
+      SELECT
+        EXTRACT(MONTH FROM v.DTEMITVENDA) AS MES_NUM,
+        SUM(COALESCE(v.VLRLIQVENDA, 0)) AS TOTAL
+      FROM VDVENDA v
+      WHERE EXTRACT(YEAR FROM v.DTEMITVENDA) = ?
+        AND v.STATUSVENDA = 'V3'
+        AND v.CODTIPOMOV = 801
+      GROUP BY 1
+      ORDER BY 1
+    `;
+
+      const result = await firebirdQuery(sql, [year]);
+
+      // nomes dos meses
+      const meses = [
+        "Jan",
+        "Fev",
+        "Mar",
+        "Abr",
+        "Mai",
+        "Jun",
+        "Jul",
+        "Ago",
+        "Set",
+        "Out",
+        "Nov",
+        "Dez",
+      ];
+
+      // cria estrutura com 12 meses
+      const mapa = Array.from({ length: 12 }, (_, i) => ({
+        MES: meses[i],
+        TOTAL: 0,
+      }));
+
+      // preenche com os dados retornados
+      for (const row of result) {
+        const idx = row.MES_NUM - 1;
+        if (idx >= 0 && idx < 12) {
+          mapa[idx].TOTAL = Number(row.TOTAL) || 0;
+        }
+      }
+
+      const payload = {
+        year,
+        data: mapa,
+      };
+
+      setCache(key, payload);
+
+      return res.json(payload);
+    } catch (error) {
+      console.error("evolucaoVendas error:", error);
+      return res
+        .status(500)
+        .json({ error: "Erro ao buscar evolução de vendas" });
+    }
+  }
 }
- 
+
 module.exports = new DashboardVendasController();
